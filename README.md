@@ -1,23 +1,13 @@
-Medical Image Analysis (KneeOA)
-AI-Driven Knee Osteoarthritis Diagnostics
-This project automates Knee Osteoarthritis (OA) detection by combining Deep Learning with a high-performance mobile interface. The app analyzes X-ray images to identify clinical indicators like joint space narrowing, providing an Automated Risk Score for early intervention.
+> Why do I have a folder named ".expo" in my project?
 
-🚀 Key Highlights
-Dual-Agent Architecture: Features a CNN Diagnostic Agent for image classification and a RAG-based Recommendation Agent for clinical guidance.
+The ".expo" folder is created when an Expo project is started using "expo start" command.
 
-Precision UI: A minimalist, flicker-free dark interface designed in Figma, optimized for medical practitioners.
+> What do the files contain?
 
-Offline-First: Secure local data management using SQLite.
+- "devices.json": contains information about devices that have recently opened this project. This is used to populate the "Development sessions" list in your development builds.
+- "settings.json": contains the server configuration that is used to serve the application manifest.
 
-🛠️ Tech Stack
-Mobile: React Native (Expo), EAS.
+> Should I commit the ".expo" folder?
 
-AI/ML: Python, CNN, Retrieval-Augmented Generation (RAG).
-
-Data: Pandas, Scikit-learn, expo-sqlite.
-
-🏗️ Quick Start
-Bash
-git clone https://github.com/your-username/repo-name.git
-npm install
-npx expo start
+No, you should not share the ".expo" folder. It does not contain any information that is relevant for other developers working on the project, it is specific to your machine.
+Upon project creation, the ".expo" folder is already added to your ".gitignore" file.
