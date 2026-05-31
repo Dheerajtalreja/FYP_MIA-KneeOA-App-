@@ -5,6 +5,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import ErrorScreen from './src/screens/ErrorScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import QuestionnaireScreen from './src/screens/QuestionnaireScreen';
 import ImageCaptureScreen from './src/screens/ImageCaptureScreen';
@@ -29,6 +32,9 @@ export default function App() {
             >
                 <Stack.Screen name="Splash" component={SplashScreen} />
                 <Stack.Screen name="Login" component={LoginScreen} />
+                <Stack.Screen name="Register" component={RegisterScreen} />
+                <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+                <Stack.Screen name="Error" component={ErrorScreen} />
                 <Stack.Screen name="Questionnaire" component={QuestionnaireScreen} />
                 <Stack.Screen name="Home" component={HomeScreen} />
                 <Stack.Screen name="ImageCapture" component={ImageCaptureScreen} />
