@@ -103,7 +103,12 @@ const LoginScreen = ({ navigation }) => {
                 return;
             }
 
-            Alert.alert('Login failed', error.message || 'Unable to sign in right now.');
+            navigation.navigate('Error', {
+                title: 'Login failed',
+                message: error.message || 'Unable to sign in right now. Please check your connection and try again.',
+                retryRoute: 'Login',
+                retryLabel: 'Try Sign In Again',
+            });
         } finally {
             setLoading(false);
         }
@@ -197,7 +202,7 @@ const LoginScreen = ({ navigation }) => {
                         </View>
                     </View>
 
-                    <TouchableOpacity style={styles.forgotButton}>
+                    <TouchableOpacity style={styles.forgotButton} onPress={() => navigation.navigate('ForgotPassword')}>
                         <Text style={styles.forgotText}>Forgot Password?</Text>
                     </TouchableOpacity>
 
@@ -238,7 +243,7 @@ const LoginScreen = ({ navigation }) => {
 
                     <View style={styles.signupRow}>
                         <Text style={styles.signupText}>Don't have an account? </Text>
-                        <TouchableOpacity>
+                        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
                             <Text style={styles.signupLink}>Sign Up</Text>
                         </TouchableOpacity>
                     </View>
