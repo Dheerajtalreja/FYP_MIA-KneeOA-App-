@@ -5,6 +5,7 @@ Expo React Native mobile frontend for Knee Osteoarthritis analysis and recommend
 ## What it does
 
 - Authenticates users against the FastAPI backend
+- Supports sign-up, login error handling, and password recovery guidance
 - Collects questionnaire and clinical profile data
 - Uploads knee X-ray images and sends them for analysis
 - Displays diagnostic results, KL grade, and recommendations
@@ -32,6 +33,9 @@ Expo React Native mobile frontend for Knee Osteoarthritis analysis and recommend
 
 - `src/screens/SplashScreen.js` - startup animation and route handoff
 - `src/screens/LoginScreen.js` - login form and JWT token retrieval
+- `src/screens/RegisterScreen.js` - account creation flow with the app theme
+- `src/screens/ForgotPasswordScreen.js` - recovery guidance screen for forgotten passwords
+- `src/screens/ErrorScreen.js` - themed error fallback screen for auth and other failures
 - `src/screens/QuestionnaireScreen.js` - clinical intake and profile update
 - `src/screens/HomeScreen.js` - dashboard and navigation hub
 - `src/screens/ImageCaptureScreen.js` - X-ray upload and analysis flow
@@ -61,12 +65,15 @@ The backend URL is configured through `.env.local`:
 
 The frontend currently follows this flow:
 
-1. Login with email and password
-2. Save or update profile fields from the questionnaire
-3. Upload an X-ray image to the backend
-4. Analyze the uploaded image by `image_id`
-5. Render the report details
-6. Fetch recommendations and exercise videos by KL grade
+1. Sign up or log in with email and password
+2. Use the forgot-password screen for recovery guidance when credentials are lost
+3. Save or update profile fields from the questionnaire
+4. Upload an X-ray image to the backend
+5. Analyze the uploaded image by `image_id`
+6. Render the report details
+7. Fetch recommendations and exercise videos by KL grade
+
+Password recovery currently routes to a themed guidance screen because the backend does not expose a dedicated reset-password endpoint yet.
 
 ## Available Scripts
 

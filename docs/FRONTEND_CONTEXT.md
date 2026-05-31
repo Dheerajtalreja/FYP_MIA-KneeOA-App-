@@ -54,31 +54,30 @@ The project has been organized into a standard Expo layout:
 
 - `index.js` registers the root app with Expo.
 - `App.js` defines the stack navigator and routes.
+This is an Expo React Native frontend for a Knee Osteoarthritis (Knee OA) medical image analysis app. The app supports patient login, registration, password recovery guidance, questionnaire intake, X-ray upload and analysis, report viewing, and evidence-based recommendations.
 - Initial route: `Splash`
 - Navigation flow: `Splash` → `Login` → `Questionnaire` → `Home` → `ImageCapture` → `Result` → `Recommendations`
-
-## Screen Responsibilities
-
-### Splash Screen
-- Displays branding and loading animation.
-- Automatically navigates to `Login` after a short delay.
-- No backend calls.
+- `src/screens/RegisterScreen.js`
+- `src/screens/ForgotPasswordScreen.js`
+- `src/screens/ErrorScreen.js`
 
 ### Login Screen ✅ UPDATED (April 21, 2026)
 - Collects email and password.
+2. User logs in on `Login` or creates an account on `Register`.
+3. Forgot-password navigation opens `ForgotPassword`, which provides recovery guidance.
+4. Login or registration failures can route to the themed `Error` screen.
 - Calls backend login endpoint through `loginUser`.
 - Stores JWT token in the API service via `setAuthToken`.
 - Persists the user locally via SQLite `saveUser`.
 - **NEW**: Pulls cloud data via `fetchLatestFromCloud()` (mobile sync)
 - **NEW**: Saves pulled data to local SQLite tables
 - Falls back to demo credentials if backend is unavailable.
+9. Result appears on `Result`.
+10. Recommendation details are shown on `Recommendations`.
 
 ### Questionnaire Screen
 - Collects clinical intake data such as age, sex, pain level, mobility, history, and medication.
-- Saves questionnaire response locally in SQLite.
-- Updates the backend profile with relevant fields using `updateProfile`.
-- Derives backend-ready values such as mobility level and current meds.
-- Passes clinical profile context to the next screen.
+- The forgot-password screen is a client-side recovery guide only; the backend does not currently expose a dedicated reset-password endpoint.
 - **NEW**: Questionnaire automatically logged to sync_log for cloud push
 
 ### Home Screen

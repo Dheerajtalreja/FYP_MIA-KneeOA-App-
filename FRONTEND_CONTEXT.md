@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is an Expo React Native frontend for a Knee Osteoarthritis (Knee OA) medical image analysis app. The app supports patient login, questionnaire intake, X-ray upload and analysis, report viewing, and evidence-based recommendations.
+This is an Expo React Native frontend for a Knee Osteoarthritis (Knee OA) medical image analysis app. The app supports patient login, registration, password recovery guidance, questionnaire intake, X-ray upload and analysis, report viewing, and evidence-based recommendations.
 
 The frontend is designed as an offline-first mobile app with local SQLite persistence and backend synchronization through a FastAPI API.
 
@@ -31,6 +31,9 @@ The project has been organized into a standard Expo layout:
 ### Screens
 - `src/screens/SplashScreen.js`
 - `src/screens/LoginScreen.js`
+- `src/screens/RegisterScreen.js`
+- `src/screens/ForgotPasswordScreen.js`
+- `src/screens/ErrorScreen.js`
 - `src/screens/HomeScreen.js`
 - `src/screens/QuestionnaireScreen.js`
 - `src/screens/ImageCaptureScreen.js`
@@ -184,13 +187,15 @@ Defined in `src/config/theme.js`:
 ## Current Navigation and Data Flow
 
 1. User sees `Splash`.
-2. User logs in on `Login`.
-3. Questionnaire data is captured on `Questionnaire`.
-4. User lands on `Home` with clinical context.
-5. User opens `ImageCapture` to upload an X-ray.
-6. Image is uploaded and analyzed by the backend.
-7. Result appears on `Result`.
-8. Recommendation details are shown on `Recommendations`.
+2. User logs in on `Login` or creates an account on `Register`.
+3. Forgot-password navigation opens `ForgotPassword`, which provides recovery guidance.
+4. Login or registration failures can route to the themed `Error` screen.
+5. Questionnaire data is captured on `Questionnaire`.
+6. User lands on `Home` with clinical context.
+7. User opens `ImageCapture` to upload an X-ray.
+8. Image is uploaded and analyzed by the backend.
+9. Result appears on `Result`.
+10. Recommendation details are shown on `Recommendations`.
 
 ## Environment Files
 
@@ -248,6 +253,7 @@ When changing this app, keep these rules consistent:
 - The dashboard remains mostly static UI data.
 - Questionnaire data is only partially mapped to backend profile fields.
 - Report history and profile history screens are not present yet.
+- The forgot-password screen is a client-side recovery guide only; the backend does not currently expose a dedicated reset-password endpoint.
 
 ## Summary
 

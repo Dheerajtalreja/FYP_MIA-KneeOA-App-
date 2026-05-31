@@ -100,6 +100,7 @@ This `docs/` folder contains all essential documentation for the Knee OA mobile 
 1. **Start here**: [FRONTEND_CONTEXT.md](FRONTEND_CONTEXT.md)
 2. **Implementation**: [MOBILE_SYNC.md](../MOBILE_SYNC.md)
 3. **Backend API**: [BACKEND_CONFIGURATION.md](../BACKEND_CONFIGURATION.md)
+4. **Auth UX**: Register, Forgot Password, and Error screens are part of the themed login flow
 
 ### For Backend Developers
 1. **Start here**: [BACKEND_CONTEXT.md](BACKEND_CONTEXT.md)
@@ -123,15 +124,16 @@ This `docs/` folder contains all essential documentation for the Knee OA mobile 
 - Backend FastAPI with 20+ endpoints
 - All 4 mobile sync endpoints implemented
 - React Native mobile app with SQLite local storage
+- Themed Register, Forgot Password, and Error screens added to the login flow
 - Bidirectional sync (push every 5 min, pull on login)
 - Offline-first architecture
 - Bearer token authentication
 - Complete audit trail (PROFILE_LOG)
 
 ### 🔄 In Progress
-- Pull sync wiring in LoginScreen
 - Mobile app UI for sync status display
 - Token refresh implementation (optional enhancement)
+- Password recovery backend endpoint is not implemented yet
 
 ### 📋 Future
 - Incremental sync using timestamps
@@ -196,6 +198,7 @@ This `docs/` folder contains all essential documentation for the Knee OA mobile 
 
 ### Main Endpoints
 - **Auth**: `/api/v1/auth/login`, `/api/v1/auth/register`
+- **Auth UI**: Login, Register, Forgot Password, Error screens
 - **Upload**: `/api/v1/upload/`
 - **Diagnostic**: `/api/v1/diagnostic/analyze`, `/api/v1/diagnostic/reports`
 - **Recommendations**: `/api/v1/recommendation/`
