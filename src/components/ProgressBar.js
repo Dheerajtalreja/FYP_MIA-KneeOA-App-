@@ -4,7 +4,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS } from '../constants/theme';
+import { COLORS } from '../config/theme';
 
 const ProgressBar = ({ currentStep, totalSteps, labels = [] }) => {
     const progress = currentStep / totalSteps;

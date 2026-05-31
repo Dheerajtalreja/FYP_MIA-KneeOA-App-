@@ -9,14 +9,13 @@ import {
     Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES, getKLGradeColor, getKLGradeLabel } from '../constants/theme';
+import { COLORS, SIZES, getKLGradeColor, getKLGradeLabel } from '../config/theme';
 import DisclaimerBanner from '../components/DisclaimerBanner';
 
 const ResultScreen = ({ navigation, route }) => {
-    // Expecting imageUri and mockResult from ImageCaptureScreen for now
-    const { imageUri, kneeSide, mockResult } = route.params || {};
+    const { imageUri, kneeSide, analysis, scanId, questionnaireId, clinicalProfile } = route.params || {};
 
-    const grade = mockResult?.klGrade ?? 0;
+    const grade = analysis?.klGrade ?? analysis?.kl_grade ?? 0;
     const gradeColor = getKLGradeColor(grade);
 
     return (
@@ -56,7 +55,14 @@ const ResultScreen = ({ navigation, route }) => {
                             <Text style={styles.gradeSide}>{kneeSide ? kneeSide.toUpperCase() : 'UNKNOWN'} KNEE</Text>
                         </View>
                     </View>
-                    <Text style={styles.analysisDetails}>{mockResult?.details || 'No further details available.'}</Text>
+                    <Text style={styles.analysisDetails}>
+                        {analysis?.diagnosisSummary || analysis?.details || 'No further details available.'}
+                    </Text>
+                    {analysis?.recommendation ? (
+                        <Text style={[styles.analysisDetails, { marginTop: 12 }]}>
+                            {analysis.recommendation}
+                        </Text>
+                    ) : null}
                 </View>
 
                 <DisclaimerBanner />
@@ -64,7 +70,13 @@ const ResultScreen = ({ navigation, route }) => {
                 <View style={styles.actionContainer}>
                     <TouchableOpacity
                         style={styles.actionBtnWrapper}
-                        onPress={() => navigation.navigate('Recommendations', { grade })}
+                        onPress={() => navigation.navigate('Recommendations', {
+                            grade,
+                            scanId,
+                            questionnaireId,
+                            clinicalProfile,
+                            analysis,
+                        })}
                     >
                         <LinearGradient
                             colors={COLORS.accentGradient}

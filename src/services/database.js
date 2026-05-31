@@ -26,6 +26,7 @@ const initializeTables = async (database) => {
             full_name TEXT,
             role TEXT DEFAULT 'patient',
             token TEXT,
+            refresh_token TEXT,
             profile_data TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now')),
@@ -114,14 +115,15 @@ export const saveUser = async (userData) => {
     const database = await getDatabase();
     const result = await database.runAsync(
         `INSERT OR REPLACE INTO users
-         (server_id, email, full_name, role, token, profile_data, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+         (server_id, email, full_name, role, token, refresh_token, profile_data, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
         [
             userData.id || null,
             userData.email,
             userData.fullName,
             userData.role || 'patient',
             userData.token || null,
+            userData.refreshToken || null,
             JSON.stringify(userData.profile || {}),
         ]
     );

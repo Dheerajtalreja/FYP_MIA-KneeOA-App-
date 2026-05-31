@@ -11,9 +11,10 @@ import {
     Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES } from '../constants/theme';
+import { COLORS, SIZES, SHADOWS } from '../config/theme';
 import ProgressBar from '../components/ProgressBar';
-import { saveQuestionnaireResponse } from '../services/database';
+import { getUser, saveQuestionnaireResponse } from '../services/database';
+import { updateProfile } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -84,9 +85,36 @@ const QuestionnaireScreen = ({ navigation }) => {
     const handleComplete = async () => {
         setLoading(true);
         try {
-            await saveQuestionnaireResponse({ ...formData, userId: 'user_123' });
-            // In a real app, this might upload right away. For offline-first, sync handles it later.
-            navigation.replace('Home');
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
+            const localQuestionnaireId = await saveQuestionnaireResponse({ ...formData, userId });
+
+            const mobilityLevel = formData.mobilityScore <= 3 ? 'limited' : formData.mobilityScore <= 6 ? 'moderate' : 'good';
+            const currentMeds = formData.medications
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean);
+
+            try {
+                await updateProfile({
+                    age: formData.age,
+                    pain_level: formData.painLevel,
+                    mobility_level: mobilityLevel,
+                    current_meds: currentMeds.length > 0 ? currentMeds : null,
+                });
+            } catch (uploadError) {
+                console.warn('Profile update skipped:', uploadError.message);
+            }
+
+            navigation.replace('Home', {
+                questionnaireId: localQuestionnaireId,
+                clinicalProfile: {
+                    age: formData.age,
+                    painLevel: formData.painLevel,
+                    mobilityLevel,
+                    currentMeds,
+                },
+            });
         } catch (error) {
             console.error('Failed to save questionnaire:', error);
         } finally {
@@ -502,7 +530,7 @@ const styles = StyleSheet.create({
     },
     toggleBtnSmallActive: {
         backgroundColor: COLORS.surface,
-        ...COLORS.shadows,
+        ...SHADOWS.small,
     },
     toggleBtnSmallText: {
         color: COLORS.textSecondary,

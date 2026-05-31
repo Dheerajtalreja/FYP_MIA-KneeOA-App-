@@ -10,6 +10,7 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { setAuthToken, setRefreshToken } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +36,7 @@ const FEATURES = [
         title: 'View Reports',
         subtitle: 'Detailed analysis reports & history',
         gradient: ['#00B4DB', '#0083B0'],
+        route: 'History',
     },
     {
         id: '4',
@@ -51,7 +53,9 @@ const STATS = [
     { label: 'Accuracy', value: '94%', icon: '🎯' },
 ];
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ navigation, route }) => {
+    const questionnaireId = route.params?.questionnaireId;
+    const clinicalProfile = route.params?.clinicalProfile;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
     const cardAnims = FEATURES.map(() => useRef(new Animated.Value(0)).current);
@@ -86,6 +90,8 @@ const HomeScreen = ({ navigation }) => {
     }, []);
 
     const handleLogout = () => {
+        setAuthToken(null);
+        setRefreshToken(null);
         navigation.replace('Login');
     };
 
@@ -152,6 +158,7 @@ const HomeScreen = ({ navigation }) => {
                 <View style={styles.sectionHeader}>
                     <Text style={styles.sectionTitle}>Quick Actions</Text>
                     <TouchableOpacity>
+                    <TouchableOpacity onPress={() => navigation.navigate('History', { questionnaireId, clinicalProfile })}>
                         <Text style={styles.seeAllText}>See All</Text>
                     </TouchableOpacity>
                 </View>
@@ -185,7 +192,7 @@ const HomeScreen = ({ navigation }) => {
                             <TouchableOpacity
                                 style={styles.card}
                                 activeOpacity={0.7}
-                                onPress={() => feature.route ? navigation.navigate(feature.route) : null}
+                                onPress={() => feature.route ? navigation.navigate(feature.route, { questionnaireId, clinicalProfile }) : null}
                             >
                                 <LinearGradient
                                     colors={feature.gradient}
@@ -263,7 +270,7 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={styles.navIcon}>📷</Text>
                     <Text style={styles.navLabel}>Scan</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.scanButton} onPress={() => navigation.navigate('ImageCapture')}>
+                <TouchableOpacity style={styles.scanButton} onPress={() => navigation.navigate('ImageCapture', { questionnaireId, clinicalProfile })}>
                     <LinearGradient
                         colors={['#00D2FF', '#6C63FF']}
                         style={styles.scanButtonGradient}
@@ -274,6 +281,7 @@ const HomeScreen = ({ navigation }) => {
                     </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.navItem}>
+                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('History', { questionnaireId, clinicalProfile })}>
                     <Text style={styles.navIcon}>📊</Text>
                     <Text style={styles.navLabel}>Reports</Text>
                 </TouchableOpacity>

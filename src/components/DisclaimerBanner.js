@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS } from '../config/theme';
 
 const DisclaimerBanner = ({ style, compact = false }) => {
     if (compact) {

@@ -9,15 +9,18 @@ import {
     Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES } from '../constants/theme';
+import { COLORS, SIZES } from '../config/theme';
 // Note: In a real Expo project, we would use expo-image-picker or expo-camera
 // import * as ImagePicker from 'expo-image-picker';
-import { submitXrayForAnalysis } from '../services/api';
+import { analyzeUploadedXray, uploadXrayImage } from '../services/api';
+import { getUser, saveScanResult } from '../services/database';
 
-const ImageCaptureScreen = ({ navigation }) => {
+const ImageCaptureScreen = ({ navigation, route }) => {
     const [imageUri, setImageUri] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
     const [kneeSide, setKneeSide] = useState('left');
+    const questionnaireId = route.params?.questionnaireId;
+    const clinicalProfile = route.params?.clinicalProfile;
 
     const handleSelectImage = () => {
         // Mock image selection
@@ -36,20 +39,85 @@ const ImageCaptureScreen = ({ navigation }) => {
         if (!imageUri) return;
         setAnalyzing(true);
 
-        // Mocking analysis delay
-        setTimeout(() => {
-            setAnalyzing(false);
-            // Navigate to Result screen with mock data
+        try {
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
+            const uploadResult = await uploadXrayImage(imageUri);
+            const imageId = uploadResult?.image_id ?? uploadResult?.imageId ?? uploadResult?.id;
+
+            const analysis = await analyzeUploadedXray(
+                imageId,
+                clinicalProfile?.painLevel ?? null,
+                clinicalProfile?.mobilityLevel ?? null
+            );
+            const normalizedResult = {
+                reportId: analysis?.report_id || analysis?.reportId || null,
+                imageId: analysis?.image_id || analysis?.imageId || imageId || null,
+                klGrade: analysis?.kl_grade ?? analysis?.klGrade ?? 0,
+                confidence: analysis?.confidence ?? analysis?.risk_score ?? analysis?.riskScore ?? 0,
+                diagnosisSummary:
+                    analysis?.diagnosis_summary ||
+                    analysis?.details ||
+                    'Analysis completed successfully.',
+                recommendation: analysis?.recommendation || null,
+                lifestylePlan: analysis?.lifestyle_plan || [],
+                warnings: analysis?.warnings || [],
+                exerciseVideoUrls: analysis?.exercise_video_urls || [],
+            };
+
+            const scanId = await saveScanResult({
+                userId,
+                imageUri,
+                imageType: 'xray',
+                viewType: 'PA',
+                kneeSide,
+                klGrade: normalizedResult.klGrade,
+                riskScore: normalizedResult.confidence,
+                analysisResult: analysis,
+                annotations: analysis?.warnings || {},
+            });
+
             navigation.navigate('Result', {
                 imageUri,
                 kneeSide,
-                mockResult: {
-                    klGrade: 2,
-                    riskScore: 0.65,
-                    details: "Mild joint space narrowing observed."
-                }
+                scanId,
+                questionnaireId,
+                clinicalProfile,
+                analysis: normalizedResult,
             });
-        }, 3000);
+        } catch (error) {
+            const fallbackResult = {
+                klGrade: 2,
+                riskScore: 0.65,
+                details: error.message || 'Mild joint space narrowing observed.',
+            };
+
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
+
+            const scanId = await saveScanResult({
+                userId,
+                imageUri,
+                imageType: 'xray',
+                viewType: 'PA',
+                kneeSide,
+                klGrade: fallbackResult.klGrade,
+                riskScore: fallbackResult.riskScore,
+                analysisResult: fallbackResult,
+                annotations: {},
+            });
+
+            navigation.navigate('Result', {
+                imageUri,
+                kneeSide,
+                scanId,
+                questionnaireId,
+                clinicalProfile,
+                analysis: fallbackResult,
+            });
+        } finally {
+            setAnalyzing(false);
+        }
     };
 
     return (

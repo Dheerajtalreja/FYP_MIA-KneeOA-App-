@@ -14,6 +14,8 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { loginUser, setAuthToken, setRefreshToken, fetchProfile } from '../services/api';
+import { saveUser } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = 220; // Fixed height taaki flicker na ho
@@ -59,7 +61,7 @@ const LoginScreen = ({ navigation }) => {
         });
     }, []);
 
-    const handleLogin = () => {
+    const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
             Alert.alert('Missing Fields', 'Please enter both email and password.');
             return;
@@ -71,14 +73,64 @@ const LoginScreen = ({ navigation }) => {
             Animated.timing(buttonScale, { toValue: 1, duration: 100, useNativeDriver: true }),
         ]).start();
 
-        setTimeout(() => {
-            setLoading(false);
-            if (email.toLowerCase() === 'test@test.com' && password === '123456') {
-                navigation.replace('Questionnaire');
-            } else {
-                Alert.alert('🔐 Demo Credentials', 'Email: test@test.com\nPassword: 123456');
+        try {
+            const response = await loginUser(email.trim().toLowerCase(), password);
+            const token = response?.access_token || response?.token || response?.data?.token || null;
+            const refresh = response?.refresh_token || null;
+
+            if (token) {
+                setAuthToken(token);
             }
-        }, 1500);
+            if (refresh) setRefreshToken(refresh);
+
+            // Determine profile info: either from login response or fetch /profile/me
+            let profile = response?.user || null;
+            let serverId = response?.user_id || response?.user?.user_id || response?.user?.id || null;
+            let role = response?.role || response?.user?.role || 'patient';
+
+            if (!profile) {
+                try {
+                    const me = await fetchProfile();
+                    profile = me || null;
+                    serverId = serverId || me?.user_id || me?.userId || null;
+                    role = role || me?.role || 'patient';
+                } catch (e) {
+                    // ignore — continue with partial info
+                }
+            }
+
+            await saveUser({
+                id: serverId || null,
+                email: response?.email || email.trim().toLowerCase(),
+                fullName: profile?.full_name || response?.full_name || email.trim(),
+                role: role || 'patient',
+                token,
+                refreshToken: refresh,
+                profile: profile || response,
+            });
+
+            navigation.replace('Questionnaire');
+        } catch (error) {
+            if (email.toLowerCase() === 'test@test.com' && password === '123456') {
+                await saveUser({
+                    email: email.trim().toLowerCase(),
+                    fullName: 'Demo User',
+                    role: 'patient',
+                    profile: { demo: true },
+                });
+                navigation.replace('Questionnaire');
+                return;
+            }
+
+            navigation.navigate('Error', {
+                title: 'Login failed',
+                message: error.message || 'Unable to sign in right now. Please check your connection and try again.',
+                retryRoute: 'Login',
+                retryLabel: 'Try Sign In Again',
+            });
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -169,7 +221,7 @@ const LoginScreen = ({ navigation }) => {
                         </View>
                     </View>
 
-                    <TouchableOpacity style={styles.forgotButton}>
+                    <TouchableOpacity style={styles.forgotButton} onPress={() => navigation.navigate('ForgotPassword')}>
                         <Text style={styles.forgotText}>Forgot Password?</Text>
                     </TouchableOpacity>
 
@@ -210,7 +262,7 @@ const LoginScreen = ({ navigation }) => {
 
                     <View style={styles.signupRow}>
                         <Text style={styles.signupText}>Don't have an account? </Text>
-                        <TouchableOpacity>
+                        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
                             <Text style={styles.signupLink}>Sign Up</Text>
                         </TouchableOpacity>
                     </View>

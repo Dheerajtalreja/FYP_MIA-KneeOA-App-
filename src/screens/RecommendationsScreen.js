@@ -1,4 +1,5 @@
 import React from 'react';
+import { useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -8,18 +9,83 @@ import {
     Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES } from '../constants/theme';
+import { COLORS, SIZES } from '../config/theme';
 import DisclaimerBanner from '../components/DisclaimerBanner';
+import { fetchRecommendations, fetchVideoLibrary } from '../services/api';
+
+const DEFAULT_VIDEOS = [
+    { id: 1, title: 'Straight Leg Raises', time: '5 mins', difficulty: 'Easy', icon: '🦵' },
+    { id: 2, title: 'Seated Knee Extension', time: '4 mins', difficulty: 'Easy', icon: '🪑' },
+];
 
 const RecommendationsScreen = ({ navigation, route }) => {
-    // Using grade to conditionally show some content
+    const [recommendation, setRecommendation] = useState(null);
+    const [videos, setVideos] = useState(DEFAULT_VIDEOS);
+    const [loading, setLoading] = useState(true);
+
+    const scanId = route.params?.scanId;
+    const questionnaireId = route.params?.questionnaireId;
+    const clinicalProfile = route.params?.clinicalProfile;
+    const analysis = route.params?.analysis;
     const grade = route.params?.grade ?? 0;
 
-    // Mock Videos
-    const videos = [
-        { id: 1, title: 'Straight Leg Raises', time: '5 mins', difficulty: 'Easy', icon: '🦵' },
-        { id: 2, title: 'Seated Knee Extension', time: '4 mins', difficulty: 'Easy', icon: '🪑' },
-    ];
+    useEffect(() => {
+        let active = true;
+
+        const loadData = async () => {
+            setLoading(true);
+
+            try {
+                const [recommendationsResult, videosResult] = await Promise.allSettled([
+                    fetchRecommendations(
+                        grade,
+                        clinicalProfile?.painLevel ?? null,
+                        clinicalProfile?.mobilityLevel ?? null
+                    ),
+                    fetchVideoLibrary(grade),
+                ]);
+
+                if (!active) return;
+
+                if (recommendationsResult.status === 'fulfilled' && recommendationsResult.value) {
+                    setRecommendation(recommendationsResult.value);
+                }
+
+                if ((!recommendationsResult.value || !recommendationsResult.value.recommendation) && analysis?.recommendation) {
+                    setRecommendation({ recommendation: analysis.recommendation, lifestyle_plan: analysis.lifestylePlan || [] });
+                }
+
+                if (videosResult.status === 'fulfilled') {
+                    const library = videosResult.value;
+                    const normalizedVideos = Array.isArray(library) ? library : library?.items || library?.videos || [];
+
+                    if (normalizedVideos.length > 0) {
+                        setVideos(
+                            normalizedVideos.map((item, index) => ({
+                                id: item.video_id || item.id || index + 1,
+                                title: item.title || 'Exercise',
+                                time: item.duration_seconds ? `${Math.round(item.duration_seconds / 60)} mins` : '5 mins',
+                                difficulty: item.difficulty || 'Easy',
+                                icon: item.icon || '▶',
+                            }))
+                        );
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to load recommendations:', error.message);
+            } finally {
+                if (active) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        loadData();
+
+        return () => {
+            active = false;
+        };
+    }, [grade, scanId, questionnaireId]);
 
     return (
         <View style={styles.container}>
@@ -33,6 +99,28 @@ const RecommendationsScreen = ({ navigation, route }) => {
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <DisclaimerBanner compact />
+
+                {recommendation && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Personalized Summary</Text>
+                        <View style={styles.card}>
+                            <Text style={styles.listText}>
+                                {recommendation.recommendation || recommendation.diagnosis_summary || 'Your personalized plan is ready.'}
+                            </Text>
+                            {Array.isArray(recommendation.lifestyle_plan) && recommendation.lifestyle_plan.length > 0 ? (
+                                <Text style={[styles.listText, { marginTop: 12 }]}>Structured lifestyle plan available from the backend.</Text>
+                            ) : null}
+                        </View>
+                    </View>
+                )}
+
+                {loading && (
+                    <View style={styles.section}>
+                        <View style={styles.card}>
+                            <Text style={styles.listText}>Loading recommendations from the backend...</Text>
+                        </View>
+                    </View>
+                )}
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Lifestyle Recommendations</Text>
