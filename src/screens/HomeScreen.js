@@ -10,7 +10,7 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { setAuthToken } from '../services/api';
+import { setAuthToken, setRefreshToken } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -91,6 +91,7 @@ const HomeScreen = ({ navigation, route }) => {
 
     const handleLogout = () => {
         setAuthToken(null);
+        setRefreshToken(null);
         navigation.replace('Login');
     };
 

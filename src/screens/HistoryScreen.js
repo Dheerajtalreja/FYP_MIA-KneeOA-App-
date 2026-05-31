@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS } from '../config/theme';
-import { fetchProfileHistory, fetchReports } from '../services/api';
+import { fetchProfileHistory, fetchReports, fetchPatientHistory } from '../services/api';
 import { getDatabase, getUser } from '../services/database';
 
 const HistoryScreen = ({ navigation }) => {
@@ -92,6 +92,17 @@ const HistoryScreen = ({ navigation }) => {
                     const [profileHistory, reports] = await Promise.all([fetchProfileHistory(), fetchReports()]);
                     setCloudHistory(profileHistory?.history || []);
                     setCloudReports(Array.isArray(reports) ? reports : []);
+                } catch {
+                    setCloudHistory([]);
+                    setCloudReports([]);
+                }
+            } else if (user.role === 'gp') {
+                // GP viewing a patient: use clinician patient-history endpoint
+                try {
+                    const patientServerId = selectedRow.server_id || selectedRow.key;
+                    const profileHistory = await fetchPatientHistory(patientServerId);
+                    setCloudHistory(profileHistory?.history || []);
+                    setCloudReports([]);
                 } catch {
                     setCloudHistory([]);
                     setCloudReports([]);

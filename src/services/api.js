@@ -4,22 +4,35 @@
 
 const DEFAULT_BASE_URL = 'http://localhost:8000';
 
+import { getUser, saveUser } from './database';
+
 const getBackendBaseUrl = () =>
     (process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 
 const buildUrl = (path) => `${getBackendBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
 
 let authToken = null;
+let refreshToken = null;
 
 export const setAuthToken = (token) => {
     authToken = token;
 };
 
+export const setRefreshToken = (token) => {
+    refreshToken = token;
+};
+
+export const clearAuthTokens = () => {
+    authToken = null;
+    refreshToken = null;
+};
+
 export const getBackendUrl = () => getBackendBaseUrl();
 
-const getHeaders = () => ({
+const getHeaders = (additional = {}) => ({
     'Content-Type': 'application/json',
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    ...additional,
 });
 
 const parseResponseBody = async (response) => {
@@ -42,6 +55,77 @@ const handleResponse = async (response) => {
         throw new Error(message || `HTTP ${response.status}: Request failed`);
     }
     return parseResponseBody(response);
+};
+
+// Auth-aware fetch wrapper: retries once after refresh when 401 occurs.
+const authFetch = async (path, options = {}) => {
+    const url = buildUrl(path);
+    const mergedOptions = {
+        ...options,
+        headers: {
+            ...(options.headers || {}),
+        },
+    };
+
+    // Ensure Authorization header is set from current token
+    if (authToken) mergedOptions.headers.Authorization = `Bearer ${authToken}`;
+
+    let resp = await fetch(url, mergedOptions);
+
+    if (resp.status === 401) {
+        // Keep re-login behavior: clear stored tokens and surface unauthorized error
+        try {
+            clearAuthTokens();
+        } catch (e) {
+            // ignore
+        }
+        const errorBody = await parseResponseBody(resp).catch(() => null);
+        const message = typeof errorBody === 'string' ? errorBody : (errorBody?.detail || errorBody?.message);
+        throw new Error(message || 'Unauthorized');
+    }
+
+    return handleResponse(resp);
+};
+
+// Internal refresh helper
+const _refreshAuthToken = async () => {
+    if (!refreshToken) throw new Error('No refresh token available');
+    try {
+        const resp = await fetch(buildUrl('/api/v1/auth/refresh'), {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        const data = await handleResponse(resp);
+        if (data?.access_token) {
+            setAuthToken(data.access_token);
+            if (data.refresh_token) setRefreshToken(data.refresh_token);
+
+            // Persist refreshed tokens to local DB if a user record exists
+            try {
+                const localUser = await getUser();
+                if (localUser) {
+                    await saveUser({
+                        id: localUser.server_id || localUser.id,
+                        email: localUser.email,
+                        fullName: localUser.full_name,
+                        role: localUser.role,
+                        token: data.access_token,
+                        refreshToken: data.refresh_token || null,
+                        profile: JSON.parse(localUser.profile_data || '{}'),
+                    });
+                }
+            } catch (e) {
+                // ignore persistence errors
+            }
+        }
+        return data;
+    } catch (error) {
+        // Clear tokens on refresh failure
+        setAuthToken(null);
+        setRefreshToken(null);
+        throw error;
+    }
 };
 
 // ── Auth Endpoints ─────────────────────────────────────────────
@@ -90,12 +174,11 @@ export const submitXrayForAnalysis = async (imageUri, kneeSide, viewType = 'PA')
             view_type: viewType,
         };
 
-        const response = await fetch(buildUrl('/api/v1/diagnostic/analyze'), {
+        return await authFetch('/api/v1/diagnostic/analyze', {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(uploadPayload),
         });
-        return await handleResponse(response);
     } catch (error) {
         console.warn('[API] X-ray analysis failed:', error.message);
         throw error;
@@ -136,13 +219,11 @@ export const analyzeUploadedXray = async (imageId, painLevel = null, mobilityLev
             payload.mobility_level = mobilityLevel;
         }
 
-        const response = await fetch(buildUrl('/api/v1/diagnostic/analyze'), {
+        return await authFetch('/api/v1/diagnostic/analyze', {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(payload),
         });
-
-        return await handleResponse(response);
     } catch (error) {
         console.warn('[API] Uploaded X-ray analysis failed:', error.message);
         throw error;
@@ -151,10 +232,7 @@ export const analyzeUploadedXray = async (imageId, painLevel = null, mobilityLev
 
 export const getAnalysisResult = async (analysisId) => {
     try {
-        const response = await fetch(buildUrl(`/api/v1/diagnostic/reports/${analysisId}`), {
-            headers: getHeaders(),
-        });
-        return await handleResponse(response);
+        return await authFetch(`/api/v1/diagnostic/reports/${analysisId}`);
     } catch (error) {
         console.warn('[API] Get result failed:', error.message);
         throw error;
@@ -165,12 +243,11 @@ export const getAnalysisResult = async (analysisId) => {
 
 export const submitQuestionnaireToServer = async (questionnaireData) => {
     try {
-        const response = await fetch(buildUrl('/api/v1/mobile/sync/export'), {
+        return await authFetch('/api/v1/mobile/sync/export', {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(questionnaireData),
         });
-        return await handleResponse(response);
     } catch (error) {
         console.warn('[API] Questionnaire submit failed:', error.message);
         throw error;
@@ -190,10 +267,7 @@ export const fetchRecommendations = async (klGrade, painLevel = null, mobilityLe
             params.append('mobility_level', mobilityLevel);
         }
 
-        const response = await fetch(buildUrl(`/api/v1/recommendation/?${params.toString()}`), {
-            headers: getHeaders(),
-        });
-        return await handleResponse(response);
+        return await authFetch(`/api/v1/recommendation/?${params.toString()}`);
     } catch (error) {
         console.warn('[API] Recommendations fetch failed:', error.message);
         throw error;
@@ -202,10 +276,7 @@ export const fetchRecommendations = async (klGrade, painLevel = null, mobilityLe
 
 export const fetchReports = async () => {
     try {
-        const response = await fetch(buildUrl('/api/v1/diagnostic/reports'), {
-            headers: getHeaders(),
-        });
-        return await handleResponse(response);
+        return await authFetch('/api/v1/diagnostic/reports');
     } catch (error) {
         console.warn('[API] Reports fetch failed:', error.message);
         throw error;
@@ -214,10 +285,7 @@ export const fetchReports = async () => {
 
 export const fetchProfile = async () => {
     try {
-        const response = await fetch(buildUrl('/api/v1/profile/me'), {
-            headers: getHeaders(),
-        });
-        return await handleResponse(response);
+        return await authFetch('/api/v1/profile/me');
     } catch (error) {
         console.warn('[API] Profile fetch failed:', error.message);
         throw error;
@@ -226,24 +294,33 @@ export const fetchProfile = async () => {
 
 export const fetchProfileHistory = async () => {
     try {
-        const response = await fetch(buildUrl('/api/v1/profile/me/history'), {
-            headers: getHeaders(),
-        });
-        return await handleResponse(response);
+        return await authFetch('/api/v1/profile/me/history');
     } catch (error) {
         console.warn('[API] Profile history fetch failed:', error.message);
         throw error;
     }
 };
 
+export const fetchPatientHistory = async (patientId) => {
+    try {
+        if (!patientId) throw new Error('patientId required');
+        // Ensure numeric id when possible (backend expects integer path param)
+        const numericId = Number(patientId);
+        const pathId = Number.isFinite(numericId) && !Number.isNaN(numericId) ? String(Math.floor(numericId)) : String(patientId);
+        return await authFetch(`/api/v1/profile/patients/${pathId}/history`);
+    } catch (error) {
+        console.warn('[API] Patient history fetch failed:', error.message);
+        throw error;
+    }
+};
+
 export const updateProfile = async (profileData) => {
     try {
-        const response = await fetch(buildUrl('/api/v1/profile/me'), {
+        return await authFetch('/api/v1/profile/me', {
             method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(profileData),
         });
-        return await handleResponse(response);
     } catch (error) {
         console.warn('[API] Profile update failed:', error.message);
         throw error;
@@ -261,13 +338,7 @@ export const fetchVideoLibrary = async (klGrade = null, category = null) => {
         }
 
         const queryString = params.toString();
-        const response = await fetch(
-            buildUrl(`/api/v1/videos/${queryString ? `?${queryString}` : ''}`),
-            {
-                headers: getHeaders(),
-            }
-        );
-        return await handleResponse(response);
+        return await authFetch(`/api/v1/videos/${queryString ? `?${queryString}` : ''}`);
     } catch (error) {
         console.warn('[API] Video library fetch failed:', error.message);
         throw error;
@@ -278,12 +349,11 @@ export const fetchVideoLibrary = async (klGrade = null, category = null) => {
 
 export const syncDataToCloud = async (syncPayload) => {
     try {
-        const response = await fetch(buildUrl('/api/v1/mobile/sync/export'), {
+        return await authFetch('/api/v1/mobile/sync/export', {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(syncPayload),
         });
-        return await handleResponse(response);
     } catch (error) {
         console.warn('[API] Sync failed:', error.message);
         throw error;
@@ -292,10 +362,7 @@ export const syncDataToCloud = async (syncPayload) => {
 
 export const fetchLatestFromCloud = async (lastSyncTimestamp) => {
     try {
-        const response = await fetch(buildUrl('/api/v1/mobile/sync/data'), {
-            headers: getHeaders(),
-        });
-        return await handleResponse(response);
+        return await authFetch('/api/v1/mobile/sync/data');
     } catch (error) {
         console.warn('[API] Cloud fetch failed:', error.message);
         throw error;

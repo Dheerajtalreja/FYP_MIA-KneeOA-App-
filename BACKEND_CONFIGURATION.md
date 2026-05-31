@@ -2,25 +2,26 @@
 
 ## Overview
 
-This guide documents the **actual backend contract** currently implemented for frontend/mobile sync integration.
+This guide documents the **actual backend contract currently implemented** in this repository for frontend/mobile sync integration.
+
+It replaces the earlier assumption that pull-sync endpoints were missing.
 
 ---
 
-## Mobile Sync Endpoints - STATUS: ✅ COMPLETE
+## Mobile Sync Endpoint Status
 
-All endpoints are **already implemented** in `app/api/v1/mobile_sync.py`
+The mobile app can use both pull and export sync flows against the current backend.
 
-### ✅ All Endpoints Implemented
+### ✅ Implemented Endpoints
 
 | Endpoint | Method | Purpose | Status |
 |----------|--------|---------|--------|
-| `/api/v1/mobile/sync/data` | GET | Download user's profile + images + reports + history | ✅ IMPLEMENTED |
-| `/api/v1/mobile/sync/summary` | GET | Get counts of records for progress indicators | ✅ IMPLEMENTED |
-| `/api/v1/mobile/sync/status` | GET | Check sync health and availability | ✅ IMPLEMENTED |
-| `/api/v1/mobile/sync/export` | POST | Upload pending local changes (mobile → backend) | ✅ IMPLEMENTED |
+| `/api/v1/mobile/sync/data` | GET | Download authenticated user's profile + images + reports + profile history | IMPLEMENTED |
+| `/api/v1/mobile/sync/summary` | GET | Get sync data counts for progress indicators | IMPLEMENTED |
+| `/api/v1/mobile/sync/status` | GET | Check sync availability and return summary snapshot | IMPLEMENTED |
+| `/api/v1/mobile/sync/export` | POST | Export authenticated user's sync data as JSON file | IMPLEMENTED |
 
-**Implementation File**: `app/api/v1/mobile_sync.py`  
-**Route Registration**: In `app/main.py` - `app.include_router(mobile_sync.router, prefix="/api/v1/mobile")`
+Implementation file: `app/api/v1/mobile_sync.py`
 
 ---
 
@@ -31,16 +32,18 @@ Mobile App (React Native)
     ↓
 [Pull] GET /api/v1/mobile/sync/data
     ↓
-FastAPI Backend (app/api/v1/mobile_sync.py)
+FastAPI Backend
     ↓
 PostgreSQL (Neon)
     ↓
-SELECT * FROM "USER", "IMAGE", "REPORT", "PROFILE_LOG" WHERE user_id = ?
+SELECT user-specific profile, images, reports, and profile_logs WHERE user_id = ?
 ```
 
 ---
 
-## Database Schema (Actual - PostgreSQL)
+## Data Model Notes (Current Backend)
+
+This backend uses the following model set for sync-related payloads:
 
 ```sql
 -- Users
@@ -49,12 +52,12 @@ CREATE TABLE "USER" (
     email VARCHAR UNIQUE NOT NULL,
     password_hash VARCHAR NOT NULL,
     full_name VARCHAR NOT NULL,
-    role VARCHAR DEFAULT 'patient',  -- 'patient' or 'gp'
+    role VARCHAR DEFAULT 'patient',
     created_at TIMESTAMP,
     last_login TIMESTAMP
 );
 
--- X-ray Images uploaded by user
+-- Images uploaded by user
 CREATE TABLE "IMAGE" (
     image_id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES "USER"(user_id),
@@ -65,7 +68,7 @@ CREATE TABLE "IMAGE" (
     uploaded_at TIMESTAMP
 );
 
--- Diagnostic Reports
+-- Diagnostic reports
 CREATE TABLE "REPORT" (
     report_id SERIAL PRIMARY KEY,
     image_id INTEGER REFERENCES "IMAGE"(image_id),
@@ -74,13 +77,13 @@ CREATE TABLE "REPORT" (
     confidence FLOAT,
     diagnosis_summary TEXT,
     recommendation TEXT,
-    lifestyle_plan TEXT,      -- JSON
-    warnings TEXT,            -- JSON
-    exercise_video_urls TEXT, -- JSON
+    lifestyle_plan TEXT,
+    warnings TEXT,
+    exercise_video_urls TEXT,
     created_at TIMESTAMP
 );
 
--- User Profile History (Audit Trail)
+-- Profile audit history
 CREATE TABLE "PROFILE_LOG" (
     log_id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES "USER"(user_id),
@@ -93,45 +96,34 @@ CREATE TABLE "PROFILE_LOG" (
 
 ---
 
-## Authentication
+## Current Backend Route Wiring
 
-- **Method**: Bearer token authentication
-- **Token Source**: `POST /api/v1/auth/login`
-- **Token Type**: Access token (short-lived)
-- **Roles Supported**: `patient` and `gp`
+Mobile sync routes are registered in `app/main.py`:
 
-**Example Login**:
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=test@example.com&password=TestPass123!@#"
-
-# Response:
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
-  "user_id": 1,
-  "email": "test@example.com"
-}
+```python
+app.include_router(mobile_sync.router, prefix="/api/v1/mobile", tags=["Mobile Sync"])
 ```
 
 ---
 
-## Current Implementation Details
+## Current Implementation Notes
 
-- **Main File**: `app/api/v1/mobile_sync.py`
-- **Service**: `MobileSyncService` in `app/services/mobile_sync.py`
-- **Database Models**: User, Image, Report, ProfileLog (SQLAlchemy ORM)
-- **Authorization**: Bearer token required; users can only access their own data
-- **Route Prefix**: `/api/v1/mobile`
+- Auth model: bearer access token from `POST /api/v1/auth/login`
+- Role access: `patient` and `gp` can access mobile sync endpoints
+- Payload source: `MobileSyncService` in `app/services/mobile_sync.py`
+- Current `/sync/status` response includes summary fields, `last_sync: null`, and `available: true`
 
-## Implementation Guide
+---
+
+## Legacy Implementation Guide (Reference)
+
+The sections below are retained as optional design reference only. In this repository, equivalent endpoints are already implemented under `app/api/v1/mobile_sync.py`.
 
 ### 1️⃣ Implement `GET /api/v1/mobile/sync/data`
 
 **Purpose**: Return all user data for first-time pull or full sync
 
-**File**: `app/routes/mobile_sync.py` (create if doesn't exist)
+**File**: `app/api/v1/mobile_sync.py` (already exists)
 
 ```python
 from fastapi import APIRouter, Depends, HTTPException
@@ -334,12 +326,12 @@ async def get_sync_status(
 
 ```python
 from fastapi import FastAPI
-from app.routes import mobile_sync
+from app.api.v1 import mobile_sync
 
 app = FastAPI()
 
 # Include mobile sync routes
-app.include_router(mobile_sync.router)
+app.include_router(mobile_sync.router, prefix="/api/v1/mobile", tags=["Mobile Sync"])
 
 # Other routes...
 ```
@@ -348,12 +340,14 @@ app.include_router(mobile_sync.router)
 
 ## Token Refresh Implementation
 
-Currently, tokens expire after **15 minutes**. Mobile app needs refresh token support.
+Currently, access tokens are issued by `POST /api/v1/auth/login` and there is **no refresh token endpoint** implemented yet in `app/api/v1/auth.py`.
+
+If frontend token refresh is required, add `POST /api/v1/auth/refresh` as a future enhancement.
 
 ### Add Refresh Token Endpoint
 
 ```python
-# In app/routes/auth.py
+# In app/api/v1/auth.py
 
 @router.post("/auth/refresh")
 async def refresh_token(
@@ -405,6 +399,65 @@ async def login(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
+---
+
+## Backend Context (For Frontend Team)
+
+- **API Base:** `/api/v1` — all endpoints in this document are under this prefix.
+- **Auth:** Bearer JWT in `Authorization` header. Obtain tokens from `POST /api/v1/auth/login`.
+- **Role-based access:** `role` claim in the token is used for RBAC. Common roles: `patient`, `gp`, `admin`.
+
+**Environment / Runtime**
+- **DATABASE_URL:** full Postgres/Neon connection string (required in production).
+- **DEBUG:** `0|1` or `false|true` (defaults to false). Controls SQLAlchemy echo and verbose logging.
+- **TESTING:** `0|1` or `false|true` (set by CI/test runs to enable SQLite in-memory behavior).
+
+**Backend Config Notes**
+- The backend now supports SQLite for tests and Postgres for production. For Postgres, engine is created with `pool_pre_ping=True` to avoid stale connections. See `app/core/config.py`.
+
+**New/Updated Endpoints (important for frontend)**
+- **GET /api/v1/profile/me** — Get authenticated user's profile (all roles). Returns `ProfileOut`.
+- **GET /api/v1/profile/me/history** — Get authenticated user's profile change history (audit logs).
+- **GET /api/v1/profile/patients/{patient_id}/history** — NEW: Clinician audit access (allowed roles: `gp`, `admin`). Returns `ProfileHistoryOut` (ordered by `changed_at` desc).
+
+Example: fetch patient history as GP (replace token and id):
+
+```http
+GET /api/v1/profile/patients/42/history HTTP/1.1
+Host: api.example.com
+Authorization: Bearer <ACCESS_TOKEN_WITH_ROLE_gp>
+Accept: application/json
+```
+
+Successful response shape (abridged):
+
+```json
+{
+    "user_id": 42,
+    "full_name": "Patient Name",
+    "total_changes": 3,
+    "history": [
+        {"log_id": 5, "field_name": "pain_level", "old_value": "2", "new_value": "4", "changed_at": "2026-05-31T12:34:56Z"},
+        ...
+    ]
+}
+```
+
+**Auth Header Example**
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....
+```
+
+**Where to Find Backend Contracts and Tests**
+- API routes: `app/api/v1/` (look for `profile.py`, `mobile_sync.py`, `auth.py`).
+- Pydantic response schemas: `app/schemas/` (e.g., `profile_schema.py`).
+- Tests for profile endpoints: `tests/test_profile.py` (includes access-control tests for the patient-history endpoint).
+
+**Changelog**
+- Recent entries and historical changelogs: [docs/changelog/](../changelog/)
+
+If you want, I can also produce a compact JSON or OpenAPI fragment of the updated endpoints for the frontend team to import directly.
     access_token = create_token(
         data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=15)
@@ -589,11 +642,12 @@ LIMIT 10;
 
 ## Deployment Checklist
 
-- [ ] Implement all 3 sync endpoints
-- [ ] Add refresh token endpoint
-- [ ] Test endpoints with curl/Postman
-- [ ] Update API documentation
-- [ ] Add rate limiting to sync endpoints
+- [x] Implement all 3 pull sync endpoints (`/sync/data`, `/sync/summary`, `/sync/status`)
+- [x] Implement export sync endpoint (`/sync/export`)
+- [ ] Add refresh token endpoint (future enhancement)
+- [x] Test endpoints with API test suite
+- [x] Update API documentation
+- [x] Add authentication and role checks on sync endpoints
 - [ ] Monitor sync success/failure metrics
 - [ ] Create alerting for sync failures
 - [ ] Load test with multiple users
@@ -605,7 +659,7 @@ LIMIT 10;
 
 ## Next Steps for Mobile App Team
 
-Once backend endpoints are deployed:
+With current backend endpoints available:
 
 1. Call `fetchLatestFromCloud()` after login in [src/screens/LoginScreen.js](src/screens/LoginScreen.js)
 2. Parse response and save to local SQLite tables
@@ -615,6 +669,6 @@ Once backend endpoints are deployed:
 
 ---
 
-**Version**: 1.0  
+**Version**: 1.1  
 **Last Updated**: April 21, 2026  
-**Status**: ❌ Backend endpoints NOT yet implemented
+**Status**: ✅ Mobile sync pull/export endpoints implemented in backend

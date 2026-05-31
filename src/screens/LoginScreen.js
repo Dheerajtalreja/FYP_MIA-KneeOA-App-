@@ -14,7 +14,7 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { loginUser, setAuthToken } from '../services/api';
+import { loginUser, setAuthToken, setRefreshToken, fetchProfile } from '../services/api';
 import { saveUser } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -76,18 +76,37 @@ const LoginScreen = ({ navigation }) => {
         try {
             const response = await loginUser(email.trim().toLowerCase(), password);
             const token = response?.access_token || response?.token || response?.data?.token || null;
+            const refresh = response?.refresh_token || null;
 
             if (token) {
                 setAuthToken(token);
             }
+            if (refresh) setRefreshToken(refresh);
+
+            // Determine profile info: either from login response or fetch /profile/me
+            let profile = response?.user || null;
+            let serverId = response?.user_id || response?.user?.user_id || response?.user?.id || null;
+            let role = response?.role || response?.user?.role || 'patient';
+
+            if (!profile) {
+                try {
+                    const me = await fetchProfile();
+                    profile = me || null;
+                    serverId = serverId || me?.user_id || me?.userId || null;
+                    role = role || me?.role || 'patient';
+                } catch (e) {
+                    // ignore — continue with partial info
+                }
+            }
 
             await saveUser({
-                id: response?.user_id || response?.user?.user_id || response?.user?.id || null,
+                id: serverId || null,
                 email: response?.email || email.trim().toLowerCase(),
-                fullName: response?.full_name || response?.user?.full_name || email.trim(),
-                role: response?.role || response?.user?.role || 'patient',
+                fullName: profile?.full_name || response?.full_name || email.trim(),
+                role: role || 'patient',
                 token,
-                profile: response?.user || response,
+                refreshToken: refresh,
+                profile: profile || response,
             });
 
             navigation.replace('Questionnaire');
