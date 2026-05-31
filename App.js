@@ -9,6 +9,7 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import ErrorScreen from './src/screens/ErrorScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
 import QuestionnaireScreen from './src/screens/QuestionnaireScreen';
 import ImageCaptureScreen from './src/screens/ImageCaptureScreen';
 import ResultScreen from './src/screens/ResultScreen';
@@ -37,6 +38,7 @@ export default function App() {
                 <Stack.Screen name="Error" component={ErrorScreen} />
                 <Stack.Screen name="Questionnaire" component={QuestionnaireScreen} />
                 <Stack.Screen name="Home" component={HomeScreen} />
+                <Stack.Screen name="History" component={HistoryScreen} />
                 <Stack.Screen name="ImageCapture" component={ImageCaptureScreen} />
                 <Stack.Screen name="Result" component={ResultScreen} />
                 <Stack.Screen name="Recommendations" component={RecommendationsScreen} />

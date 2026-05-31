@@ -13,7 +13,7 @@ import { COLORS, SIZES } from '../config/theme';
 // Note: In a real Expo project, we would use expo-image-picker or expo-camera
 // import * as ImagePicker from 'expo-image-picker';
 import { analyzeUploadedXray, uploadXrayImage } from '../services/api';
-import { saveScanResult } from '../services/database';
+import { getUser, saveScanResult } from '../services/database';
 
 const ImageCaptureScreen = ({ navigation, route }) => {
     const [imageUri, setImageUri] = useState(null);
@@ -40,6 +40,8 @@ const ImageCaptureScreen = ({ navigation, route }) => {
         setAnalyzing(true);
 
         try {
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
             const uploadResult = await uploadXrayImage(imageUri);
             const imageId = uploadResult?.image_id ?? uploadResult?.imageId ?? uploadResult?.id;
 
@@ -64,7 +66,7 @@ const ImageCaptureScreen = ({ navigation, route }) => {
             };
 
             const scanId = await saveScanResult({
-                userId: 'user_123',
+                userId,
                 imageUri,
                 imageType: 'xray',
                 viewType: 'PA',
@@ -90,8 +92,11 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 details: error.message || 'Mild joint space narrowing observed.',
             };
 
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
+
             const scanId = await saveScanResult({
-                userId: 'user_123',
+                userId,
                 imageUri,
                 imageType: 'xray',
                 viewType: 'PA',

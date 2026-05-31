@@ -224,6 +224,18 @@ export const fetchProfile = async () => {
     }
 };
 
+export const fetchProfileHistory = async () => {
+    try {
+        const response = await fetch(buildUrl('/api/v1/profile/me/history'), {
+            headers: getHeaders(),
+        });
+        return await handleResponse(response);
+    } catch (error) {
+        console.warn('[API] Profile history fetch failed:', error.message);
+        throw error;
+    }
+};
+
 export const updateProfile = async (profileData) => {
     try {
         const response = await fetch(buildUrl('/api/v1/profile/me'), {

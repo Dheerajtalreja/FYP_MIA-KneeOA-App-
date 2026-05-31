@@ -13,7 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS } from '../config/theme';
 import ProgressBar from '../components/ProgressBar';
-import { saveQuestionnaireResponse } from '../services/database';
+import { getUser, saveQuestionnaireResponse } from '../services/database';
 import { updateProfile } from '../services/api';
 
 const { width } = Dimensions.get('window');
@@ -85,7 +85,9 @@ const QuestionnaireScreen = ({ navigation }) => {
     const handleComplete = async () => {
         setLoading(true);
         try {
-            const localQuestionnaireId = await saveQuestionnaireResponse({ ...formData, userId: 'user_123' });
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
+            const localQuestionnaireId = await saveQuestionnaireResponse({ ...formData, userId });
 
             const mobilityLevel = formData.mobilityScore <= 3 ? 'limited' : formData.mobilityScore <= 6 ? 'moderate' : 'good';
             const currentMeds = formData.medications

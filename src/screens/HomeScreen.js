@@ -36,6 +36,7 @@ const FEATURES = [
         title: 'View Reports',
         subtitle: 'Detailed analysis reports & history',
         gradient: ['#00B4DB', '#0083B0'],
+        route: 'History',
     },
     {
         id: '4',
@@ -156,6 +157,7 @@ const HomeScreen = ({ navigation, route }) => {
                 <View style={styles.sectionHeader}>
                     <Text style={styles.sectionTitle}>Quick Actions</Text>
                     <TouchableOpacity>
+                    <TouchableOpacity onPress={() => navigation.navigate('History', { questionnaireId, clinicalProfile })}>
                         <Text style={styles.seeAllText}>See All</Text>
                     </TouchableOpacity>
                 </View>
@@ -278,6 +280,7 @@ const HomeScreen = ({ navigation, route }) => {
                     </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.navItem}>
+                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('History', { questionnaireId, clinicalProfile })}>
                     <Text style={styles.navIcon}>📊</Text>
                     <Text style={styles.navLabel}>Reports</Text>
                 </TouchableOpacity>
