@@ -133,7 +133,7 @@ const RegisterScreen = ({ navigation }) => {
                         </View>
                     </LinearGradient>
                     <Text style={styles.title}>Create Account</Text>
-                    <Text style={styles.subtitle}>Join the KneeOA app and start your analysis journey</Text>
+                    <Text style={styles.subtitle}>Join KneeOA Engine and start your analysis journey</Text>
                 </Animated.View>
             </LinearGradient>
 

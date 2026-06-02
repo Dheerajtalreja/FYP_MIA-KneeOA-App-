@@ -158,7 +158,7 @@ const SplashScreen = ({ navigation }) => {
             </Animated.View>
 
             <Animated.View style={{ opacity: fadeAnim }}>
-                <Text style={styles.appName}>KneeOA</Text>
+                <Text style={styles.appName}>KneeOA Engine</Text>
                 <LinearGradient
                     colors={['#00D2FF', '#6C63FF']}
                     start={{ x: 0, y: 0 }}

@@ -1,5 +1,5 @@
 // ─── Design System Tokens ──────────────────────────────────────
-// Centralized theme for the KneeOA app. All new screens should
+// Centralized theme for KneeOA Engine. All new screens should
 // import from here rather than hard-coding values.
 
 export const COLORS = {

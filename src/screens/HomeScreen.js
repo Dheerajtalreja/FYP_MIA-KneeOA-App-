@@ -161,6 +161,7 @@ const HomeScreen = ({ navigation, route }) => {
                     <TouchableOpacity onPress={() => navigation.navigate('History', { questionnaireId, clinicalProfile })}>
                         <Text style={styles.seeAllText}>See All</Text>
                     </TouchableOpacity>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Feature Cards */}
@@ -288,6 +289,7 @@ const HomeScreen = ({ navigation, route }) => {
                 <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
                     <Text style={styles.navIcon}>⚙️</Text>
                     <Text style={styles.navLabel}>Settings</Text>
+                </TouchableOpacity>
                 </TouchableOpacity>
             </View>
         </View>
