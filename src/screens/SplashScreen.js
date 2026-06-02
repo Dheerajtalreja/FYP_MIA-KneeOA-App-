@@ -8,6 +8,7 @@ import {
     Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { hydrateAuthState } from '../services/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -23,6 +24,8 @@ const SplashScreen = ({ navigation }) => {
     const ringOpacity = useRef(new Animated.Value(0.6)).current;
 
     useEffect(() => {
+        let active = true;
+
         // Main logo animation
         Animated.parallel([
             Animated.timing(fadeAnim, {
@@ -98,12 +101,23 @@ const SplashScreen = ({ navigation }) => {
         };
         setTimeout(animateDots, 800);
 
-        // Navigate to Login after 3 seconds
+        // Navigate to the authenticated route after bootstrapping the persisted session.
         const timer = setTimeout(() => {
-            navigation.replace('Login');
+            hydrateAuthState()
+                .then(({ accessToken }) => {
+                    if (!active) return;
+                    navigation.replace(accessToken ? 'Home' : 'Login');
+                })
+                .catch(() => {
+                    if (!active) return;
+                    navigation.replace('Login');
+                });
         }, 3000);
 
-        return () => clearTimeout(timer);
+        return () => {
+            active = false;
+            clearTimeout(timer);
+        };
     }, []);
 
     const dot1Y = dotAnim1.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });

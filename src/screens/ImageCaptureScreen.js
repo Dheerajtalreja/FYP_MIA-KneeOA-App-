@@ -8,10 +8,9 @@ import {
     Platform,
     Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES } from '../config/theme';
-// Note: In a real Expo project, we would use expo-image-picker or expo-camera
-// import * as ImagePicker from 'expo-image-picker';
 import { analyzeUploadedXray, uploadXrayImage } from '../services/api';
 import { getUser, saveScanResult } from '../services/database';
 
@@ -22,15 +21,52 @@ const ImageCaptureScreen = ({ navigation, route }) => {
     const questionnaireId = route.params?.questionnaireId;
     const clinicalProfile = route.params?.clinicalProfile;
 
+    const pickImage = async (source) => {
+        try {
+            const permission =
+                source === 'camera'
+                    ? await ImagePicker.requestCameraPermissionsAsync()
+                    : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+            if (permission.status !== 'granted') {
+                Alert.alert(
+                    'Permission required',
+                    source === 'camera'
+                        ? 'Camera access is required to capture an X-ray image.'
+                        : 'Photo library access is required to choose an X-ray image.'
+                );
+                return;
+            }
+
+            const result =
+                source === 'camera'
+                    ? await ImagePicker.launchCameraAsync({
+                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          quality: 0.9,
+                          allowsEditing: false,
+                      })
+                    : await ImagePicker.launchImageLibraryAsync({
+                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          quality: 0.9,
+                          allowsEditing: false,
+                      });
+
+            if (!result.canceled && result.assets?.[0]?.uri) {
+                setImageUri(result.assets[0].uri);
+            }
+        } catch (error) {
+            Alert.alert('Unable to open picker', error.message || 'Please try again.');
+        }
+    };
+
     const handleSelectImage = () => {
-        // Mock image selection
         Alert.alert(
-            "Select X-Ray",
-            "Choose an image source (Mock)",
+            'Select X-Ray',
+            'Choose an image source',
             [
-                { text: "Camera", onPress: () => setImageUri("https://via.placeholder.com/400x600/1a2a3a/00D2FF?text=Mock+Knee+X-Ray") },
-                { text: "Gallery", onPress: () => setImageUri("https://via.placeholder.com/400x600/1e3040/6C63FF?text=Mock+Knee+X-Ray") },
-                { text: "Cancel", style: "cancel" }
+                { text: 'Camera', onPress: () => pickImage('camera') },
+                { text: 'Gallery', onPress: () => pickImage('library') },
+                { text: 'Cancel', style: 'cancel' }
             ]
         );
     };

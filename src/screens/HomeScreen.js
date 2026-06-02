@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { setAuthToken, setRefreshToken } from '../services/api';
+import { getUser } from '../services/database';
 
 const { width } = Dimensions.get('window');
 
@@ -56,11 +57,29 @@ const STATS = [
 const HomeScreen = ({ navigation, route }) => {
     const questionnaireId = route.params?.questionnaireId;
     const clinicalProfile = route.params?.clinicalProfile;
+    const [currentUser, setCurrentUser] = useState(null);
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
     const cardAnims = FEATURES.map(() => useRef(new Animated.Value(0)).current);
 
     useEffect(() => {
+        let active = true;
+
+        const loadCurrentUser = async () => {
+            try {
+                const user = await getUser();
+                if (active) {
+                    setCurrentUser(user);
+                }
+            } catch {
+                if (active) {
+                    setCurrentUser(null);
+                }
+            }
+        };
+
+        loadCurrentUser();
+
         // Header animation
         Animated.parallel([
             Animated.timing(fadeAnim, {
@@ -87,7 +106,13 @@ const HomeScreen = ({ navigation, route }) => {
                 })
             )
         ).start();
+
+        return () => {
+            active = false;
+        };
     }, []);
+
+    const displayName = currentUser?.full_name?.trim() || currentUser?.email?.split('@')?.[0] || 'Patient';
 
     const handleLogout = () => {
         setAuthToken(null);
@@ -121,7 +146,7 @@ const HomeScreen = ({ navigation, route }) => {
                     <View style={styles.headerTop}>
                         <View>
                             <Text style={styles.greeting}>Good Evening 👋</Text>
-                            <Text style={styles.userName}>Dr. User</Text>
+                            <Text style={styles.userName}>{displayName}</Text>
                         </View>
                         <TouchableOpacity style={styles.profileButton} onPress={handleLogout}>
                             <LinearGradient

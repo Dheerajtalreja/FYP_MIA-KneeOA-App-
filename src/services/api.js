@@ -1,8 +1,9 @@
+export * from './apiCore';
 // ─── Backend API Service ───────────────────────────────────────
 // Communicates with the backend API and keeps the base URL
 // configurable through Expo environment variables.
 
-const DEFAULT_BASE_URL = 'http://localhost:8000';
+const DEFAULT_BASE_URL = 'https://kneeoa.online';
 
 import { getUser, saveUser } from './database';
 
@@ -48,10 +49,64 @@ const parseResponseBody = async (response) => {
     return response.text();
 };
 
+const extractErrorMessage = (payload) => {
+    if (payload === null || payload === undefined) {
+        return null;
+    }
+
+    if (typeof payload === 'string') {
+        return payload.trim() || null;
+    }
+
+    if (typeof payload === 'number' || typeof payload === 'boolean') {
+        return String(payload);
+    }
+
+    if (Array.isArray(payload)) {
+        const messages = payload
+            .map((item) => extractErrorMessage(item))
+            .filter(Boolean);
+
+        return messages.length ? messages.join(' ') : null;
+    }
+
+    if (typeof payload === 'object') {
+        for (const key of ['detail', 'message', 'error', 'msg', 'title']) {
+            const message = extractErrorMessage(payload[key]);
+            if (message) {
+                return message;
+            }
+        }
+
+        if (payload.errors) {
+            const message = extractErrorMessage(payload.errors);
+            if (message) {
+                return message;
+            }
+        }
+
+        const nestedMessages = Object.values(payload)
+            .map((item) => extractErrorMessage(item))
+            .filter(Boolean);
+
+        if (nestedMessages.length) {
+            return nestedMessages.join(' ');
+        }
+
+        try {
+            return JSON.stringify(payload);
+        } catch {
+            return null;
+        }
+    }
+
+    return null;
+};
+
 const handleResponse = async (response) => {
     if (!response.ok) {
         const error = await parseResponseBody(response).catch(() => ({}));
-        const message = typeof error === 'string' ? error : error.detail || error.message;
+        const message = extractErrorMessage(error);
         throw new Error(message || `HTTP ${response.status}: Request failed`);
     }
     return parseResponseBody(response);
@@ -80,7 +135,7 @@ const authFetch = async (path, options = {}) => {
             // ignore
         }
         const errorBody = await parseResponseBody(resp).catch(() => null);
-        const message = typeof errorBody === 'string' ? errorBody : (errorBody?.detail || errorBody?.message);
+        const message = extractErrorMessage(errorBody);
         throw new Error(message || 'Unauthorized');
     }
 
@@ -154,7 +209,9 @@ export const registerUser = async (userData) => {
     try {
         const response = await fetch(buildUrl('/api/v1/auth/register'), {
             method: 'POST',
-            headers: getHeaders(),
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify(userData),
         });
         return await handleResponse(response);

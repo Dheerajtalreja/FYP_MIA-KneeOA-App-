@@ -8,6 +8,16 @@
     "owner": "azfarsuhail",
     "android": {
       "package": "com.azfarsuhail.kneeoaapp"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow KneeOA Engine to access the camera to capture knee X-ray images.",
+          "photosPermission": "Allow KneeOA Engine to access your photo library for X-ray uploads."
+        }
+      ]
+    ]
   }
 }
