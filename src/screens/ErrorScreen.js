@@ -3,10 +3,46 @@ import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Animated } from 'r
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS, SIZES } from '../config/theme';
 
+const formatMessage = (value) => {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (typeof value === 'string') {
+        return value.trim() || null;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    if (Array.isArray(value)) {
+        const parts = value.map((item) => formatMessage(item)).filter(Boolean);
+        return parts.length ? parts.join(' ') : null;
+    }
+
+    if (typeof value === 'object') {
+        return (
+            formatMessage(value.detail) ||
+            formatMessage(value.message) ||
+            formatMessage(value.error) ||
+            formatMessage(value.msg) ||
+            formatMessage(value.title) ||
+            Object.values(value)
+                .map((item) => formatMessage(item))
+                .filter(Boolean)
+                .join(' ') ||
+            null
+        );
+    }
+
+    return null;
+};
+
 const ErrorScreen = ({ navigation, route }) => {
     const title = route.params?.title || 'Something went wrong';
     const message =
-        route.params?.message ||
+        formatMessage(route.params?.message) ||
         'We could not complete that action. Please try again or return to the previous screen.';
     const retryRoute = route.params?.retryRoute || 'Login';
     const retryLabel = route.params?.retryLabel || 'Try Again';

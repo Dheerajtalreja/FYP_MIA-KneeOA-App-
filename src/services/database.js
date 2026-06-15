@@ -107,6 +107,8 @@ const initializeTables = async (database) => {
             error_message TEXT
         );
     `);
+
+    await database.runAsync('UPDATE users SET token = NULL, refresh_token = NULL');
 };
 
 // ── User Operations ────────────────────────────────────────────
