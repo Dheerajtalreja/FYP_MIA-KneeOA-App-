@@ -30,6 +30,7 @@ const FEATURES = [
         title: 'AI Analysis',
         subtitle: 'Deep learning powered OA grading',
         gradient: ['#6C63FF', '#3A7BD5'],
+        route: 'ImageCapture',
     },
     {
         id: '3',
@@ -37,6 +38,7 @@ const FEATURES = [
         title: 'View Reports',
         subtitle: 'Detailed analysis reports & history',
         gradient: ['#00B4DB', '#0083B0'],
+        route: 'History',
     },
     {
         id: '4',
@@ -44,6 +46,7 @@ const FEATURES = [
         title: 'KL Grading',
         subtitle: 'Kellgren-Lawrence classification',
         gradient: ['#f093fb', '#f5576c'],
+        route: 'ImageCapture',
     },
 ];
 
@@ -367,7 +370,7 @@ const HomeScreen = ({ navigation }) => {
                         <Text style={styles.scanButtonIcon}>+</Text>
                     </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem}>
+                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('History')}>
                     <Text style={styles.navIcon}>📊</Text>
                     <Text style={styles.navLabel}>Reports</Text>
                 </TouchableOpacity>
