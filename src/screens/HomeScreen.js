@@ -1,190 +1,379 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
-    View, Text, TouchableOpacity, StyleSheet, StatusBar, Animated,
-    Dimensions, ScrollView, ActivityIndicator
+    View,
+    Text,
+    TouchableOpacity,
+    StyleSheet,
+    StatusBar,
+    Animated,
+    Dimensions,
+    ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-// Import your service function here
-import { getDashboardData } from '../services/api';
-import { getUser } from '../services/database';
+import { fetchReports } from '../services/api';
+import { getDatabase, getUser } from '../services/database';
 
 const { width } = Dimensions.get('window');
 
-// Keep UI styles/config local for design consistency
-const FEATURE_UI_CONFIG = {
-    'upload': { icon: '📷', gradient: ['#00D2FF', '#3A7BD5'], route: 'ImageCapture' },
-    'analysis': { icon: '🤖', gradient: ['#6C63FF', '#3A7BD5'] },
-    'reports': { icon: '📊', gradient: ['#00B4DB', '#0083B0'], route: 'History' },
-    'grading': { icon: '📋', gradient: ['#f093fb', '#f5576c'] },
+const FEATURES = [
+    {
+        id: '1',
+        icon: '📷',
+        title: 'Upload X-Ray',
+        subtitle: 'Capture or import knee X-ray images',
+        gradient: ['#00D2FF', '#3A7BD5'],
+        route: 'ImageCapture',
+    },
+    {
+        id: '2',
+        icon: '🤖',
+        title: 'AI Analysis',
+        subtitle: 'Deep learning powered OA grading',
+        gradient: ['#6C63FF', '#3A7BD5'],
+    },
+    {
+        id: '3',
+        icon: '📊',
+        title: 'View Reports',
+        subtitle: 'Detailed analysis reports & history',
+        gradient: ['#00B4DB', '#0083B0'],
+    },
+    {
+        id: '4',
+        icon: '📋',
+        title: 'KL Grading',
+        subtitle: 'Kellgren-Lawrence classification',
+        gradient: ['#f093fb', '#f5576c'],
+    },
+];
+
+const DEFAULT_STATS = [
+    { label: 'Scans Done', value: '0', icon: '🔬' },
+    { label: 'Reports', value: '0', icon: '📑' },
+    { label: 'Accuracy', value: '--', icon: '🎯' },
+];
+
+const formatTimeAgo = (value) => {
+    if (!value) return 'Just now';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Recently';
+
+    const diffMs = Date.now() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    if (diffHours < 24) return `${diffHours} hr ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    return date.toLocaleDateString();
 };
 
-const HomeScreen = ({ navigation, route }) => {
-    const questionnaireId = route.params?.questionnaireId;
-    const clinicalProfile = route.params?.clinicalProfile;
+const safeParseJson = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
 
-    // State for dynamic data
-    const [currentUser, setCurrentUser] = useState(null);
-    const [stats, setStats] = useState([]);
-    const [features, setFeatures] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+};
 
+const HomeScreen = ({ navigation }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
+    const cardAnims = FEATURES.map(() => useRef(new Animated.Value(0)).current);
+    const [stats, setStats] = useState(DEFAULT_STATS);
+    const [activities, setActivities] = useState([]);
+    const [userName, setUserName] = useState('Dr. User');
 
-    useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                setLoading(true);
-                setError(null);
-                const [user, dashboardData] = await Promise.all([
-                    getUser(),
-                    getDashboardData() // Your new API call
-                ]);
+    const loadDashboardData = useCallback(async () => {
+        try {
+            const user = await getUser();
+            const userKey = user?.server_id || user?.email || user?.id || 'current_user';
+            setUserName(user?.full_name || user?.email || 'Dr. User');
 
-                setCurrentUser(user);
-                setStats(dashboardData?.stats ?? []); // Expected: [{label, value, icon}, ...]
-                setFeatures(dashboardData?.features ?? []); // Expected: [{id, type, title, subtitle}, ...]
-            } catch (err) {
-                console.error("Error loading dashboard:", err);
-                setError('Could not load your dashboard. Pull down to retry.');
-            } finally {
-                setLoading(false);
-            }
-        };
+            const database = await getDatabase();
+            const [scanRows, reports] = await Promise.all([
+                database.getAllAsync(
+                    'SELECT * FROM scan_history WHERE user_id = ? ORDER BY scanned_at DESC',
+                    [userKey]
+                ),
+                fetchReports().catch(() => []),
+            ]);
 
-        loadInitialData();
+            const scanCount = Array.isArray(scanRows) ? scanRows.length : 0;
+            const reportCount = Array.isArray(reports) ? reports.length : 0;
+            const normalizedScanRows = Array.isArray(scanRows) ? scanRows : [];
 
-        // Animations
-        Animated.parallel([
-            Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-            Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
-        ]).start();
+            const confidenceValues = normalizedScanRows
+                .map((scan) => {
+                    const parsedAnalysis = safeParseJson(scan.analysis_result);
+                    const rawConfidence = Number(
+                        scan.risk_score ??
+                        scan.confidence ??
+                        parsedAnalysis.confidence ??
+                        parsedAnalysis.risk_score ??
+                        0
+                    );
+                    if (!Number.isFinite(rawConfidence) || rawConfidence < 0) return null;
+                    return rawConfidence > 1 ? rawConfidence : rawConfidence * 100;
+                })
+                .filter((value) => value !== null);
+
+            const avgConfidence = confidenceValues.length
+                ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length
+                : 0;
+            const accuracyValue = scanCount
+                ? `${Math.round(Math.min(100, Math.max(0, avgConfidence)))}%`
+                : '--';
+
+            setStats([
+                { label: 'Scans Done', value: String(scanCount), icon: '🔬' },
+                { label: 'Reports', value: String(reportCount), icon: '📑' },
+                { label: 'Accuracy', value: accuracyValue, icon: '🎯' },
+            ]);
+
+            const recentActivities = normalizedScanRows.slice(0, 3).map((scan) => {
+                const side = scan.knee_side ? `${scan.knee_side} knee` : 'Knee';
+                const isAnalyzed = scan.kl_grade != null || scan.analysis_result;
+                const gradeText = scan.kl_grade != null ? `KL Grade ${scan.kl_grade}` : 'Scan uploaded';
+                return {
+                    title: `${side.charAt(0).toUpperCase()}${side.slice(1)} ${isAnalyzed ? 'Analyzed' : 'Uploaded'}`,
+                    timeLabel: `${gradeText} • ${formatTimeAgo(scan.scanned_at)}`,
+                };
+            });
+
+            setActivities(
+                recentActivities.length
+                    ? recentActivities
+                    : [
+                          {
+                              title: 'No scans yet',
+                              timeLabel: 'Upload your first X-ray to see activity here',
+                          },
+                      ]
+            );
+        } catch (error) {
+            setStats(DEFAULT_STATS);
+            setActivities([
+                {
+                    title: 'Unable to load activity',
+                    timeLabel: 'Please try again in a moment',
+                },
+            ]);
+        }
     }, []);
 
-    if (loading) {
-        return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F1923' }}>
-                <ActivityIndicator size="large" color="#00D2FF" />
-            </View>
-        );
-    }
+    useEffect(() => {
+        // Header animation
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 500,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        // Staggered card animations
+        Animated.stagger(
+            120,
+            cardAnims.map((anim) =>
+                Animated.spring(anim, {
+                    toValue: 1,
+                    friction: 6,
+                    tension: 40,
+                    useNativeDriver: true,
+                })
+            )
+        ).start();
+
+        loadDashboardData();
+        const unsubscribe = navigation.addListener('focus', loadDashboardData);
+        return unsubscribe;
+    }, [cardAnims, fadeAnim, loadDashboardData, navigation, slideAnim]);
+
+    const handleLogout = () => {
+        navigation.replace('Login');
+    };
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" />
+            <StatusBar barStyle="light-content" backgroundColor="#0F2027" />
 
             {/* Header */}
             <LinearGradient
-                colors={['#152232', '#0F1923']}
+                colors={['#0F2027', '#203A43', '#2C5364']}
                 style={styles.header}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
             >
                 <View style={styles.decorCircle1} />
                 <View style={styles.decorCircle2} />
 
-                <View style={styles.headerContent}>
+                <Animated.View
+                    style={[
+                        styles.headerContent,
+                        {
+                            opacity: fadeAnim,
+                            transform: [{ translateY: slideAnim }],
+                        },
+                    ]}
+                >
                     <View style={styles.headerTop}>
                         <View>
-                            <Text style={styles.greeting}>Welcome back</Text>
-                            <Text style={styles.userName}>
-                                {currentUser?.name || currentUser?.fullName || 'there'}
-                            </Text>
+                            <Text style={styles.greeting}>Good Evening 👋</Text>
+                            <Text style={styles.userName}>{userName}</Text>
                         </View>
-                        <TouchableOpacity
-                            style={styles.profileButton}
-                            onPress={() => navigation.navigate('Profile')}
-                        >
+                        <TouchableOpacity style={styles.profileButton} onPress={handleLogout}>
                             <LinearGradient
-                                colors={['#00D2FF', '#3A7BD5']}
+                                colors={['#00D2FF', '#6C63FF']}
                                 style={styles.profileGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
                             >
                                 <Text style={styles.profileIcon}>👤</Text>
                             </LinearGradient>
                         </TouchableOpacity>
                     </View>
 
-                    {/* Stats */}
+                    {/* Stats Row */}
                     <View style={styles.statsRow}>
                         {stats.map((stat, index) => (
-                            <View key={index} style={styles.statCard}>
+                            <View key={`${stat.label}-${index}`} style={styles.statCard}>
                                 <Text style={styles.statIcon}>{stat.icon}</Text>
                                 <Text style={styles.statValue}>{stat.value}</Text>
                                 <Text style={styles.statLabel}>{stat.label}</Text>
                             </View>
                         ))}
                     </View>
-                </View>
+                </Animated.View>
             </LinearGradient>
 
-            {/* Scrollable body */}
+            {/* Main Content */}
             <ScrollView
                 style={styles.scrollContent}
                 contentContainerStyle={styles.scrollContainer}
                 showsVerticalScrollIndicator={false}
             >
-                <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+                {/* Quick Actions Title */}
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Quick Actions</Text>
+                    <TouchableOpacity>
+                        <Text style={styles.seeAllText}>See All</Text>
+                    </TouchableOpacity>
+                </View>
 
-                    {error && (
-                        <Text style={{ color: '#f5576c', marginBottom: 16 }}>{error}</Text>
-                    )}
+                {/* Feature Cards */}
+                <View style={styles.cardsGrid}>
+                    {FEATURES.map((feature, index) => (
+                        <Animated.View
+                            key={feature.id}
+                            style={[
+                                styles.cardWrapper,
+                                {
+                                    opacity: cardAnims[index],
+                                    transform: [
+                                        {
+                                            translateY: cardAnims[index].interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: [30, 0],
+                                            }),
+                                        },
+                                        {
+                                            scale: cardAnims[index].interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: [0.9, 1],
+                                            }),
+                                        },
+                                    ],
+                                },
+                            ]}
+                        >
+                            <TouchableOpacity
+                                style={styles.card}
+                                activeOpacity={0.7}
+                                onPress={() => feature.route ? navigation.navigate(feature.route) : null}
+                            >
+                                <LinearGradient
+                                    colors={feature.gradient}
+                                    style={styles.cardIconContainer}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                >
+                                    <Text style={styles.cardIcon}>{feature.icon}</Text>
+                                </LinearGradient>
+                                <Text style={styles.cardTitle}>{feature.title}</Text>
+                                <Text style={styles.cardSubtitle}>{feature.subtitle}</Text>
+                            </TouchableOpacity>
+                        </Animated.View>
+                    ))}
+                </View>
 
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Quick Actions</Text>
+                {/* Recent Activity */}
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Recent Activity</Text>
+                </View>
+
+                {activities.map((activity, index) => (
+                    <View key={`${activity.title}-${index}`} style={styles.activityCard}>
+                        <View style={styles.activityRow}>
+                            <LinearGradient
+                                colors={[
+                                    index % 3 === 0 ? '#00D2FF' : index % 3 === 1 ? '#6C63FF' : '#f093fb',
+                                    index % 3 === 0 ? '#3A7BD5' : '#3A7BD5',
+                                ]}
+                                style={styles.activityDot}
+                            />
+                            <View style={styles.activityInfo}>
+                                <Text style={styles.activityTitle}>{activity.title}</Text>
+                                <Text style={styles.activityTime}>{activity.timeLabel}</Text>
+                            </View>
+                            <Text style={styles.activityArrow}>→</Text>
+                        </View>
                     </View>
+                ))}
 
-                    {/* Feature cards */}
-                    <View style={styles.cardsGrid}>
-                        {features.map((item) => {
-                            const config = FEATURE_UI_CONFIG[item.type] || FEATURE_UI_CONFIG['analysis'];
-                            return (
-                                <View key={item.id} style={styles.cardWrapper}>
-                                    <TouchableOpacity
-                                        style={styles.card}
-                                        onPress={() => config.route && navigation.navigate(config.route, { questionnaireId, clinicalProfile })}
-                                    >
-                                        <LinearGradient colors={config.gradient} style={styles.cardIconContainer}>
-                                            <Text style={styles.cardIcon}>{config.icon}</Text>
-                                        </LinearGradient>
-                                        <Text style={styles.cardTitle}>{item.title}</Text>
-                                        <Text style={styles.cardSubtitle}>{item.subtitle}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            );
-                        })}
-                    </View>
-
-                </Animated.View>
+                {/* Bottom Spacer */}
+                <View style={{ height: 30 }} />
             </ScrollView>
 
-            {/* Bottom navigation */}
+            {/* Bottom Navigation */}
             <View style={styles.bottomNav}>
-                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
+                <TouchableOpacity style={styles.navItem}>
                     <Text style={styles.navIconActive}>🏠</Text>
                     <Text style={styles.navLabelActive}>Home</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('History')}>
-                    <Text style={styles.navIcon}>📊</Text>
-                    <Text style={styles.navLabel}>Reports</Text>
+                <TouchableOpacity style={styles.navItem}>
+                    <Text style={styles.navIcon}>📷</Text>
+                    <Text style={styles.navLabel}>Scan</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.scanButton}
-                    onPress={() => navigation.navigate('ImageCapture', { questionnaireId, clinicalProfile })}
-                >
-                    <LinearGradient colors={['#00D2FF', '#3A7BD5']} style={styles.scanButtonGradient}>
+                <TouchableOpacity style={styles.scanButton} onPress={() => navigation.navigate('ImageCapture')}>
+                    <LinearGradient
+                        colors={['#00D2FF', '#6C63FF']}
+                        style={styles.scanButtonGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                    >
                         <Text style={styles.scanButtonIcon}>+</Text>
                     </LinearGradient>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Settings')}>
+                <TouchableOpacity style={styles.navItem}>
+                    <Text style={styles.navIcon}>📊</Text>
+                    <Text style={styles.navLabel}>Reports</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
                     <Text style={styles.navIcon}>⚙️</Text>
                     <Text style={styles.navLabel}>Settings</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Profile')}>
-                    <Text style={styles.navIcon}>👤</Text>
-                    <Text style={styles.navLabel}>Profile</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -289,7 +478,6 @@ const styles = StyleSheet.create({
     scrollContainer: {
         paddingHorizontal: 20,
         paddingTop: 20,
-        paddingBottom: 20,
     },
     sectionHeader: {
         flexDirection: 'row',
