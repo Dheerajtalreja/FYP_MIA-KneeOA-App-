@@ -123,9 +123,17 @@ const ImageCaptureScreen = ({ navigation, route }) => {
             });
         } catch (error) {
             const fallbackResult = {
-                klGrade: 2,
-                riskScore: 0.65,
-                details: error.message || 'Mild joint space narrowing observed.',
+                klGrade: null,
+                riskScore: 0,
+                diagnosisSummary:
+                    error?.message ||
+                    'Unable to analyze this image. Please upload a clearer X-ray and try again.',
+                details:
+                    error?.message ||
+                    'Unable to analyze this image. Please upload a clearer X-ray and try again.',
+                recommendation: null,
+                warnings: [],
+                isInvalid: true,
             };
 
             const currentUser = await getUser();
@@ -137,10 +145,12 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 imageType: 'xray',
                 viewType: 'PA',
                 kneeSide,
-                klGrade: fallbackResult.klGrade,
-                riskScore: fallbackResult.riskScore,
+                klGrade: null,
+                riskScore: 0,
                 analysisResult: fallbackResult,
-                annotations: {},
+                annotations: {
+                    error: error?.message || 'Image analysis failed',
+                },
             });
 
             navigation.navigate('Result', {

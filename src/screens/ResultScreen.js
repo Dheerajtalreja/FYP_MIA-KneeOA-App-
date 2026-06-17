@@ -15,8 +15,10 @@ import DisclaimerBanner from '../components/DisclaimerBanner';
 const ResultScreen = ({ navigation, route }) => {
     const { imageUri, kneeSide, analysis, scanId, questionnaireId, clinicalProfile } = route.params || {};
 
-    const grade = analysis?.klGrade ?? analysis?.kl_grade ?? 0;
-    const gradeColor = getKLGradeColor(grade);
+    const grade = analysis?.klGrade ?? analysis?.kl_grade;
+    const normalizedGrade = Number.isFinite(Number(grade)) ? Number(grade) : null;
+    const gradeColor = normalizedGrade !== null ? getKLGradeColor(normalizedGrade) : COLORS.textMuted;
+    const hasValidGrade = normalizedGrade !== null;
 
     return (
         <View style={styles.container}>
@@ -39,19 +41,25 @@ const ResultScreen = ({ navigation, route }) => {
                         </View>
                     )}
                     {/* Fake Annotations Overlay Layer */}
-                    <View style={styles.annotationOverlay}>
-                        <View style={[styles.boundingRectangle, { borderColor: gradeColor }]} />
-                    </View>
+                    {hasValidGrade ? (
+                        <View style={styles.annotationOverlay}>
+                            <View style={[styles.boundingRectangle, { borderColor: gradeColor }]} />
+                        </View>
+                    ) : null}
                 </View>
 
                 <View style={styles.gradeCard}>
                     <Text style={styles.cardTitle}>Kellgren-Lawrence Grade</Text>
                     <View style={styles.gradeRow}>
                         <View style={[styles.gradeCircle, { backgroundColor: `${gradeColor}20`, borderColor: gradeColor }]}>
-                            <Text style={[styles.gradeNumber, { color: gradeColor }]}>{grade}</Text>
+                            <Text style={[styles.gradeNumber, { color: gradeColor }]}>
+                                {hasValidGrade ? normalizedGrade : '?'}
+                            </Text>
                         </View>
                         <View style={styles.gradeTextContainer}>
-                            <Text style={styles.gradeLabel}>{getKLGradeLabel(grade)} OA</Text>
+                            <Text style={styles.gradeLabel}>
+                                {hasValidGrade ? `${getKLGradeLabel(normalizedGrade)} OA` : 'Unable to determine'}
+                            </Text>
                             <Text style={styles.gradeSide}>{kneeSide ? kneeSide.toUpperCase() : 'UNKNOWN'} KNEE</Text>
                         </View>
                     </View>
