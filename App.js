@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import React, { useState, useEffect, useRef } from 'react';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import React, { useEffect, useRef } from 'react';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import * as Linking from 'expo-linking';
 
@@ -21,7 +21,7 @@ const Stack = createStackNavigator();
 
 const DEEP_LINK_PREFIX = 'https://kneeoa.online/';
 
-function NavigationHandler({ navigation }) {
+function NavigationHandler({ navigationRef }) {
     const hasHandledLink = useRef(false);
 
     useEffect(() => {
@@ -33,8 +33,8 @@ function NavigationHandler({ navigation }) {
                 if (path.startsWith('/reset-password')) {
                     const token = parsedUrl.queryParams?.token;
 
-                    if (token) {
-                        navigation.navigate('ResetPassword', { resetToken: token });
+                    if (token && navigationRef?.isReady() && !hasHandledLink.current) {
+                        navigationRef.navigate('ResetPassword', { resetToken: token });
                         hasHandledLink.current = true;
                     }
                 }
@@ -43,14 +43,12 @@ function NavigationHandler({ navigation }) {
             }
         };
 
-        // Handle cold start (app opened from deep link)
         Linking.getInitialURL().then((url) => {
             if (url) {
                 handleDeepLink(url);
             }
         });
 
-        // Handle hot start (app already running, deep link received)
         const subscription = Linking.addEventListener('url', ({ url }) => {
             handleDeepLink(url);
         });
@@ -58,14 +56,17 @@ function NavigationHandler({ navigation }) {
         return () => {
             subscription.remove();
         };
-    }, [navigation]);
+    }, [navigationRef]);
 
     return null;
 }
 
 export default function App() {
+    const navigationRef = useNavigationContainerRef();
+
     return (
         <NavigationContainer
+            ref={navigationRef}
             linking={{
                 prefixes: [DEEP_LINK_PREFIX],
                 config: {
@@ -102,7 +103,7 @@ export default function App() {
                 <Stack.Screen name="Result" component={ResultScreen} />
                 <Stack.Screen name="Recommendations" component={RecommendationsScreen} />
             </Stack.Navigator>
-            <NavigationHandler navigation={navigation} />
+            <NavigationHandler navigationRef={navigationRef} />
         </NavigationContainer>
     );
 }

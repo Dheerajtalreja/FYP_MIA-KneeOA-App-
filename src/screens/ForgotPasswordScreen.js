@@ -11,13 +11,16 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS, SIZES } from '../config/theme';
+import { requestPasswordReset } from '../services/api';
 
 const ForgotPasswordScreen = ({ navigation }) => {
     const [email, setEmail] = useState('');
     const [focused, setFocused] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(24)).current;
@@ -37,19 +40,36 @@ const ForgotPasswordScreen = ({ navigation }) => {
         ]).start();
     }, []);
 
-    const handleRecoveryRequest = () => {
-        if (!email.trim()) {
+    const handleRecoveryRequest = async () => {
+        const normalizedEmail = email.trim();
+
+        if (!normalizedEmail) {
             Alert.alert('Email required', 'Enter the email address tied to your account.');
             return;
         }
 
-        Alert.alert(
-            'Password recovery',
-            'This build does not yet have automated password reset. Please contact your clinic or administrator with this email address, or use Sign In if you remember your password.',
-            [
-                { text: 'Back to Login', onPress: () => navigation.replace('Login') },
-            ]
-        );
+        setLoading(true);
+
+        try {
+            await requestPasswordReset(normalizedEmail);
+            Alert.alert(
+                'Check your email',
+                'If an account exists for this email, we have sent a reset instruction message. Please follow the link in the email.',
+                [
+                    {
+                        text: 'Back to Login',
+                        onPress: () => navigation.replace('Login'),
+                    },
+                ]
+            );
+        } catch (error) {
+            Alert.alert(
+                'Unable to send reset request',
+                error?.message || 'Please try again in a few moments.'
+            );
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -102,18 +122,25 @@ const ForgotPasswordScreen = ({ navigation }) => {
                         </View>
 
                         <Text style={styles.note}>
-                            Automated password reset is not enabled in this version. If you cannot sign in,
-                            contact your clinic or app administrator.
+                            We’ll send a reset link if the email is registered with your account.
                         </Text>
 
-                        <TouchableOpacity activeOpacity={0.85} onPress={handleRecoveryRequest}>
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={handleRecoveryRequest}
+                            disabled={loading}
+                        >
                             <LinearGradient
                                 colors={COLORS.fullPrimaryGradient}
-                                style={styles.primaryButton}
+                                style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 0 }}
                             >
-                                <Text style={styles.primaryButtonText}>Send Recovery Request</Text>
+                                {loading ? (
+                                    <ActivityIndicator color="#FFFFFF" size="small" />
+                                ) : (
+                                    <Text style={styles.primaryButtonText}>Send Recovery Request</Text>
+                                )}
                             </LinearGradient>
                         </TouchableOpacity>
 
@@ -251,6 +278,9 @@ const styles = StyleSheet.create({
         borderRadius: SIZES.radiusLg,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    primaryButtonDisabled: {
+        opacity: 0.7,
     },
     primaryButtonText: {
         color: COLORS.textPrimary,

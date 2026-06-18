@@ -61,6 +61,10 @@ const LoginScreen = ({ navigation }) => {
         });
     }, []);
 
+    const handleForgotPassword = () => {
+        navigation.navigate('ForgotPassword');
+    };
+
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
             Alert.alert('Missing Fields', 'Please enter both email and password.');
@@ -221,7 +225,12 @@ const LoginScreen = ({ navigation }) => {
                         </View>
                     </View>
 
-                    <TouchableOpacity style={styles.forgotButton} onPress={() => navigation.navigate('ForgotPassword')}>
+                    <TouchableOpacity
+                        style={styles.forgotButton}
+                        onPress={handleForgotPassword}
+                        accessibilityRole="button"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
                         <Text style={styles.forgotText}>Forgot Password?</Text>
                     </TouchableOpacity>
 
@@ -250,14 +259,6 @@ const LoginScreen = ({ navigation }) => {
                         <View style={styles.dividerLine} />
                         <Text style={styles.dividerText}>or continue with</Text>
                         <View style={styles.dividerLine} />
-                    </View>
-
-                    <View style={styles.socialRow}>
-                        {['G', 'f', '🍎'].map((icon, index) => (
-                            <TouchableOpacity key={index} style={styles.socialButton}>
-                                <Text style={styles.socialIcon}>{icon}</Text>
-                            </TouchableOpacity>
-                        ))}
                     </View>
 
                     <View style={styles.signupRow}>

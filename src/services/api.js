@@ -221,15 +221,33 @@ export const registerUser = async (userData) => {
     }
 };
 
-export const resetPassword = async (token, newPassword) => {
+export const requestPasswordReset = async (email) => {
     try {
-        const response = await fetch(buildUrl('/reset-password'), {
+        const response = await fetch(buildUrl('/api/v1/auth/forgot-password'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                token: token,
+                email: email.trim(),
+            }),
+        });
+        return await handleResponse(response);
+    } catch (error) {
+        console.warn('[API] Password reset request failed:', error.message);
+        throw error;
+    }
+};
+
+export const resetPassword = async (token, newPassword) => {
+    try {
+        const response = await fetch(buildUrl('/api/v1/auth/reset-password'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                token,
                 new_password: newPassword,
             }),
         });
