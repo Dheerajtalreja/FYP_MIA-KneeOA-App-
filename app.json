@@ -6,8 +6,26 @@
       }
     },
     "owner": "azfarsuhail",
+    "scheme": "kneeoa",
     "android": {
-      "package": "com.azfarsuhail.kneeoaapp"
+      "package": "com.azfarsuhail.kneeoaapp",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "kneeoa.online",
+              "pathPrefix": "/reset-password"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "plugins": [
       "expo-secure-store",
