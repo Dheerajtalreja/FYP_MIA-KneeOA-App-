@@ -113,6 +113,35 @@ const initializeTables = async (database) => {
 
 // ── User Operations ────────────────────────────────────────────
 
+/**
+ * Clear all local user data (except video references) before syncing fresh data from backend.
+ * This ensures we don't have stale data mixed with new server data.
+ */
+export const clearLocalUserData = async () => {
+    const database = await getDatabase();
+    
+    console.log('[Database] Clearing local user data...');
+    
+    // Clear user record
+    await database.runAsync('DELETE FROM users');
+    
+    // Clear questionnaire responses
+    await database.runAsync('DELETE FROM questionnaire_responses');
+    
+    // Clear scan history
+    await database.runAsync('DELETE FROM scan_history');
+    
+    // Clear recommendations
+    await database.runAsync('DELETE FROM recommendations');
+    
+    // Clear sync log
+    await database.runAsync('DELETE FROM sync_log');
+    
+    // Keep video references (they're static content)
+    
+    console.log('[Database] Local user data cleared successfully');
+};
+
 export const saveUser = async (userData) => {
     const database = await getDatabase();
     const result = await database.runAsync(
@@ -248,11 +277,99 @@ export const saveRecommendation = async (recData) => {
             recData.userId,
             recData.scanId,
             recData.text,
-            JSON.stringify(recData.exercises || []),
-            JSON.stringify(recData.lifestyleTips || []),
         ]
     );
+    await logSyncAction('recommendations', result.lastInsertRowId, 'insert');
     return result.lastInsertRowId;
+};
+
+// ── Batch Save Functions for Fetch-and-Sync Pattern ────────────
+
+/**
+ * Save complete user profile data from backend in one transaction.
+ * This is the main function for the Fetch-and-Sync pattern.
+ */
+export const saveCompleteUserProfile = async (completeProfile) => {
+    const database = await getDatabase();
+    
+    console.log('[Database] Saving complete user profile...');
+    
+    // Use transaction to ensure atomicity
+    await database.executeAsync(async (exec) => {
+        // Save user
+        await exec(
+            `INSERT OR REPLACE INTO users
+             (server_id, email, full_name, role, token, refresh_token, profile_data, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+            [
+                completeProfile.user?.user_id || completeProfile.user?.id || null,
+                completeProfile.user?.email || null,
+                completeProfile.user?.full_name || null,
+                completeProfile.user?.role || 'patient',
+                null, // token will be set separately
+                null, // refresh_token will be set separately
+                JSON.stringify(completeProfile.user),
+            ]
+        );
+
+        // Save questionnaire if exists
+        if (completeProfile.questionnaire) {
+            const q = completeProfile.questionnaire;
+            await exec(
+                `INSERT OR REPLACE INTO questionnaire_responses
+                 (user_id, age, gender, weight, height, pain_level, pain_location, pain_duration,
+                  mobility_score, can_bend_fully, can_climb_stairs, can_walk_30min,
+                  previous_injuries, surgeries, medications, family_history, additional_notes, completed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+                [
+                    completeProfile.user?.user_id || completeProfile.user?.id,
+                    q.age, q.gender, q.weight, q.height,
+                    q.pain_level, q.pain_location, q.pain_duration,
+                    q.mobility_score, q.can_bend_fully, q.can_climb_stairs, q.can_walk_30min,
+                    q.previous_injuries, q.surgeries, q.medications, q.family_history, q.additional_notes,
+                ]
+            );
+        }
+
+        // Save scan history
+        if (completeProfile.scanHistory && Array.isArray(completeProfile.scanHistory)) {
+            for (const scan of completeProfile.scanHistory) {
+                await exec(
+                    `INSERT OR REPLACE INTO scan_history
+                     (user_id, image_uri, image_type, view_type, knee_side, kl_grade, risk_score,
+                      analysis_result, annotations, scanned_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+                    [
+                        completeProfile.user?.user_id || completeProfile.user?.id,
+                        scan.image_uri, scan.image_type, scan.view_type, scan.knee_side,
+                        scan.kl_grade, scan.risk_score,
+                        JSON.stringify(scan.analysis_result),
+                        JSON.stringify(scan.annotations),
+                    ]
+                );
+            }
+        }
+
+        // Save recommendations
+        if (completeProfile.recommendations && Array.isArray(completeProfile.recommendations)) {
+            for (const rec of completeProfile.recommendations) {
+                await exec(
+                    `INSERT INTO recommendations
+                     (user_id, scan_id, recommendation_text, exercises, lifestyle_tips)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [
+                        completeProfile.user?.user_id || completeProfile.user?.id,
+                        rec.scan_id || null,
+                        rec.text || rec.recommendation_text,
+                        rec.exercises,
+                        rec.lifestyle_tips,
+                    ]
+                );
+            }
+        }
+    });
+
+    console.log('[Database] Complete user profile saved successfully');
 };
 
 export const getRecommendations = async (userId) => {

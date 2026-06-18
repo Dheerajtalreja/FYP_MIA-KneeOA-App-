@@ -205,6 +205,75 @@ export const loginUser = async (email, password) => {
     }
 };
 
+// ── Fetch-and-Sync Pattern: Get fresh user data from backend ──
+
+/**
+ * Fetch complete user profile and all related data from backend.
+ * This is the 'Source of Truth' that should be called on login.
+ * Returns all user data in a single structured response.
+ */
+export const fetchCompleteUserProfile = async () => {
+    try {
+        console.log('[Fetch-and-Sync] Fetching complete user profile from backend...');
+
+        // Fetch user profile
+        const profile = await fetchProfile();
+        
+        // Fetch user's questionnaire responses
+        let questionnaire = null;
+        try {
+            const questionnaireResponse = await fetch('/api/v1/user/questionnaire', {
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (questionnaireResponse.ok) {
+                questionnaire = await questionnaireResponse.json();
+            }
+        } catch (e) {
+            console.warn('[Fetch-and-Sync] Failed to fetch questionnaire:', e.message);
+        }
+
+        // Fetch user's scan history
+        let scanHistory = [];
+        try {
+            const scansResponse = await fetch('/api/v1/user/scans', {
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (scansResponse.ok) {
+                scanHistory = await scansResponse.json();
+            }
+        } catch (e) {
+            console.warn('[Fetch-and-Sync] Failed to fetch scan history:', e.message);
+        }
+
+        // Fetch user's recommendations
+        let recommendations = [];
+        try {
+            const recsResponse = await fetch('/api/v1/user/recommendations', {
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (recsResponse.ok) {
+                recommendations = await recsResponse.json();
+            }
+        } catch (e) {
+            console.warn('[Fetch-and-Sync] Failed to fetch recommendations:', e.message);
+        }
+
+        const completeProfile = {
+            user: profile,
+            questionnaire,
+            scanHistory,
+            recommendations,
+            fetchedAt: new Date().toISOString(),
+        };
+
+        console.log('[Fetch-and-Sync] Complete profile fetched successfully');
+        return completeProfile;
+    } catch (error) {
+        console.error('[Fetch-and-Sync] Failed to fetch complete profile:', error);
+        throw error;
+    }
+};
+
 export const registerUser = async (userData) => {
     try {
         const response = await fetch(buildUrl('/api/v1/auth/register'), {

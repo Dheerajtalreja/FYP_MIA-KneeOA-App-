@@ -14,8 +14,8 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { loginUser, setAuthToken, setRefreshToken, fetchProfile } from '../services/api';
-import { saveUser } from '../services/database';
+import { loginUser, setAuthToken, setRefreshToken, fetchCompleteUserProfile } from '../services/api';
+import { saveUser, clearLocalUserData, saveCompleteUserProfile } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = 220; // Fixed height taaki flicker na ho
@@ -78,43 +78,52 @@ const LoginScreen = ({ navigation }) => {
         ]).start();
 
         try {
-            const response = await loginUser(email.trim().toLowerCase(), password);
-            const token = response?.access_token || response?.token || response?.data?.token || null;
-            const refresh = response?.refresh_token || null;
+            console.log('[LoginScreen] Authenticating with backend...');
+
+            // Step 1: Authenticate user
+            const authResponse = await loginUser(email.trim().toLowerCase(), password);
+            const token = authResponse?.access_token || authResponse?.token || authResponse?.data?.token || null;
+            const refresh = authResponse?.refresh_token || null;
+
+            if (!token) {
+                throw new Error('No access token received from server');
+            }
 
             if (token) {
                 setAuthToken(token);
             }
             if (refresh) setRefreshToken(refresh);
 
-            // Determine profile info: either from login response or fetch /profile/me
-            let profile = response?.user || null;
-            let serverId = response?.user_id || response?.user?.user_id || response?.user?.id || null;
-            let role = response?.role || response?.user?.role || 'patient';
+            console.log('[LoginScreen] Authentication successful, fetching complete profile...');
 
-            if (!profile) {
-                try {
-                    const me = await fetchProfile();
-                    profile = me || null;
-                    serverId = serverId || me?.user_id || me?.userId || null;
-                    role = role || me?.role || 'patient';
-                } catch (e) {
-                    // ignore — continue with partial info
-                }
-            }
+            // Step 2: Fetch-and-Sync Pattern
+            // Clear local data first to avoid stale data
+            await clearLocalUserData();
+            console.log('[LoginScreen] Local data cleared');
 
-            await saveUser({
-                id: serverId || null,
-                email: response?.email || email.trim().toLowerCase(),
-                fullName: profile?.full_name || response?.full_name || email.trim(),
-                role: role || 'patient',
-                token,
-                refreshToken: refresh,
-                profile: profile || response,
+            // Fetch complete profile from backend (Source of Truth)
+            const completeProfile = await fetchCompleteUserProfile();
+            console.log('[LoginScreen] Complete profile fetched from backend');
+
+            // Step 3: Save fresh server data to local database
+            await saveCompleteUserProfile({
+                ...completeProfile,
+                user: {
+                    ...completeProfile.user,
+                    token,
+                    refreshToken: refresh,
+                },
             });
+            console.log('[LoginScreen] Fresh server data saved to local database');
 
+            // Step 4: Navigate to home screen
             navigation.replace('Questionnaire');
+            console.log('[LoginScreen] Login successful, navigating to Questionnaire');
+
         } catch (error) {
+            console.error('[LoginScreen] Login error:', error);
+
+            // Fallback for demo user
             if (email.toLowerCase() === 'test@test.com' && password === '123456') {
                 await saveUser({
                     email: email.trim().toLowerCase(),

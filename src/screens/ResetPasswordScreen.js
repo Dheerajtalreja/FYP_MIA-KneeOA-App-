@@ -31,7 +31,11 @@ const ResetPasswordScreen = ({ navigation, route }) => {
     const hasAnimated = useRef(false);
 
     useEffect(() => {
+        console.log('[ResetPasswordScreen] Component mounted');
+        console.log('[ResetPasswordScreen] Reset token:', resetToken);
+
         if (!resetToken) {
+            console.warn('[ResetPasswordScreen] No reset token provided');
             Alert.alert(
                 'Invalid Link',
                 'This password reset link is invalid or has expired. Please request a new one.',
@@ -77,8 +81,14 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         setLoading(true);
 
         try {
+            console.log('[ResetPasswordScreen] Sending reset password request...');
+            console.log('[ResetPasswordScreen] Token:', resetToken);
+            console.log('[ResetPasswordScreen] Password length:', newPassword.trim().length);
+
             const response = await resetPassword(resetToken, newPassword.trim());
             
+            console.log('[ResetPasswordScreen] Success response:', response);
+
             Alert.alert(
                 'Success',
                 'Your password has been reset successfully. You can now log in with your new password.',
@@ -92,6 +102,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
                 ]
             );
         } catch (error) {
+            console.error('[ResetPasswordScreen] Error:', error);
             const errorMessage = error?.message || 'Failed to reset password. Please try again.';
             Alert.alert('Error', errorMessage);
         } finally {

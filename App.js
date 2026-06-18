@@ -22,40 +22,72 @@ const Stack = createStackNavigator();
 const DEEP_LINK_PREFIX = 'https://kneeoa.online/';
 
 function NavigationHandler({ navigationRef }) {
-    const hasHandledLink = useRef(false);
+    const hasHandledInitialLink = useRef(false);
+    const pendingLink = useRef(null);
 
     useEffect(() => {
-        const handleDeepLink = (url) => {
+        const handleDeepLink = async (url) => {
             try {
                 const parsedUrl = Linking.parse(url);
                 const path = parsedUrl.path || '';
 
+                console.log('[DeepLink] Parsed URL:', url);
+                console.log('[DeepLink] Path:', path);
+                console.log('[DeepLink] Query params:', parsedUrl.queryParams);
+
                 if (path.startsWith('/reset-password')) {
                     const token = parsedUrl.queryParams?.token;
 
-                    if (token && navigationRef?.isReady() && !hasHandledLink.current) {
+                    if (!token) {
+                        console.error('[DeepLink] No token found in URL');
+                        return;
+                    }
+
+                    console.log('[DeepLink] Token extracted:', token);
+
+                    // Wait for navigation to be ready
+                    if (navigationRef?.isReady()) {
+                        console.log('[DeepLink] Navigating to ResetPassword screen');
                         navigationRef.navigate('ResetPassword', { resetToken: token });
-                        hasHandledLink.current = true;
+                        hasHandledInitialLink.current = true;
+                        pendingLink.current = null;
+                    } else {
+                        console.log('[DeepLink] Navigation not ready, storing pending link');
+                        pendingLink.current = { resetToken: token };
                     }
                 }
             } catch (error) {
-                console.error('Failed to parse deep link:', error);
+                console.error('[DeepLink] Failed to parse deep link:', error);
             }
         };
 
+        // Handle initial deep link (app launched from link)
         Linking.getInitialURL().then((url) => {
             if (url) {
+                console.log('[DeepLink] Initial URL:', url);
                 handleDeepLink(url);
             }
         });
 
+        // Handle deep links when app is running in background
         const subscription = Linking.addEventListener('url', ({ url }) => {
+            console.log('[DeepLink] Received URL event:', url);
             handleDeepLink(url);
         });
 
         return () => {
             subscription.remove();
         };
+    }, [navigationRef]);
+
+    // Check for pending link when navigation becomes ready
+    useEffect(() => {
+        if (navigationRef?.isReady() && pendingLink.current) {
+            console.log('[DeepLink] Navigation ready, processing pending link');
+            const { resetToken } = pendingLink.current;
+            navigationRef.navigate('ResetPassword', { resetToken });
+            pendingLink.current = null;
+        }
     }, [navigationRef]);
 
     return null;
