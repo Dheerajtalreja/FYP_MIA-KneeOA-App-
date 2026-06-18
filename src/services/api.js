@@ -221,6 +221,25 @@ export const registerUser = async (userData) => {
     }
 };
 
+export const resetPassword = async (token, newPassword) => {
+    try {
+        const response = await fetch(buildUrl('/reset-password'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                token: token,
+                new_password: newPassword,
+            }),
+        });
+        return await handleResponse(response);
+    } catch (error) {
+        console.warn('[API] Password reset failed:', error.message);
+        throw error;
+    }
+};
+
 // ── Diagnostic Endpoints ───────────────────────────────────────
 
 export const submitXrayForAnalysis = async (imageUri, kneeSide, viewType = 'PA') => {
