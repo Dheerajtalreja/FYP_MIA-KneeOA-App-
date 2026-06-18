@@ -14,7 +14,8 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { loginUser, setAuthToken, setRefreshToken, fetchCompleteUserProfile } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { setAuthToken, setRefreshToken, fetchCompleteUserProfile } from '../services/api';
 import { saveUser, clearLocalUserData, saveCompleteUserProfile } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -27,6 +28,9 @@ const LoginScreen = ({ navigation }) => {
     const [showPassword, setShowPassword] = useState(false);
     const [emailFocused, setEmailFocused] = useState(false);
     const [passwordFocused, setPasswordFocused] = useState(false);
+
+    // Safely destructure from AuthContext with type checking
+    const { login } = useAuth();
 
     // Animations
     const headerFade = useRef(new Animated.Value(0)).current;
@@ -70,6 +74,17 @@ const LoginScreen = ({ navigation }) => {
             Alert.alert('Missing Fields', 'Please enter both email and password.');
             return;
         }
+
+        // SAFETY CHECK: Verify login function exists before calling
+        if (typeof login !== 'function') {
+            console.error('[LoginScreen] Login function is not available - AuthContext may not be initialized');
+            Alert.alert(
+                'Authentication Error',
+                'Login service is not ready. Please try again in a moment.'
+            );
+            return;
+        }
+
         setLoading(true);
 
         Animated.sequence([
@@ -80,19 +95,15 @@ const LoginScreen = ({ navigation }) => {
         try {
             console.log('[LoginScreen] Authenticating with backend...');
 
-            // Step 1: Authenticate user
-            const authResponse = await loginUser(email.trim().toLowerCase(), password);
-            const token = authResponse?.access_token || authResponse?.token || authResponse?.data?.token || null;
-            const refresh = authResponse?.refresh_token || null;
-
-            if (!token) {
-                throw new Error('No access token received from server');
+            // Step 1: Authenticate user using AuthContext
+            const result = await login(email.trim().toLowerCase(), password);
+            
+            if (!result?.success) {
+                throw new Error(result?.message || 'Authentication failed');
             }
 
-            if (token) {
-                setAuthToken(token);
-            }
-            if (refresh) setRefreshToken(refresh);
+            const token = result.token;
+            const authResponse = result.user;
 
             console.log('[LoginScreen] Authentication successful, fetching complete profile...');
 
@@ -111,7 +122,7 @@ const LoginScreen = ({ navigation }) => {
                 user: {
                     ...completeProfile.user,
                     token,
-                    refreshToken: refresh,
+                    refreshToken: result.user?.refreshToken || null,
                 },
             });
             console.log('[LoginScreen] Fresh server data saved to local database');

@@ -2,16 +2,228 @@
 // Offline-first storage using expo-sqlite for caching user data,
 // questionnaire responses, scan results, recommendations, and
 // video references. All writes are logged for cloud sync.
+// 
+// Web Platform Support: Uses localStorage as fallback when expo-sqlite is unavailable.
 
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 const DB_NAME = 'kneeoa_local.db';
 let db = null;
+let sqliteLoaded = false;
+
+// ─── Web Platform Mock Storage ────────────────────────────────
+// Simple localStorage-based mock for web development
+const webStorage = {
+    data: {},
+    
+    setItem: (key, value) => {
+        try {
+            webStorage.data[key] = JSON.stringify(value);
+            localStorage.setItem(`kneeoa_${key}`, JSON.stringify(value));
+        } catch (error) {
+            console.error('[Database] Web storage setItem failed:', error);
+        }
+    },
+    
+    getItem: (key) => {
+        try {
+            const stored = localStorage.getItem(`kneeoa_${key}`);
+            if (stored) {
+                return JSON.parse(stored);
+            }
+            return webStorage.data[key] || null;
+        } catch (error) {
+            console.error('[Database] Web storage getItem failed:', error);
+            return null;
+        }
+    },
+    
+    removeItem: (key) => {
+        try {
+            delete webStorage.data[key];
+            localStorage.removeItem(`kneeoa_${key}`);
+        } catch (error) {
+            console.error('[Database] Web storage removeItem failed:', error);
+        }
+    },
+    
+    clear: () => {
+        try {
+            webStorage.data = {};
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('kneeoa_')) {
+                    localStorage.removeItem(key);
+                }
+            });
+        } catch (error) {
+            console.error('[Database] Web storage clear failed:', error);
+        }
+    },
+    
+    getAllKeys: () => {
+        try {
+            const keys = [];
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('kneeoa_')) {
+                    keys.push(key.replace('kneeoa_', ''));
+                }
+            });
+            return keys;
+        } catch (error) {
+            console.error('[Database] Web storage getAllKeys failed:', error);
+            return [];
+        }
+    }
+};
+
+// Check if we're on web platform
+const isWeb = Platform.OS === 'web';
+
+// ─── Lazy SQLite Loading ──────────────────────────────────────
+// Dynamically load expo-sqlite to avoid WebAssembly errors on web
+
+const loadSQLite = async () => {
+    if (sqliteLoaded) return SQLite;
+    
+    if (Platform.OS === 'web') {
+        console.warn('[Database] expo-sqlite not available on web platform');
+        return null;
+    }
+    
+    try {
+        const SQLite = await import('expo-sqlite');
+        sqliteLoaded = true;
+        return SQLite;
+    } catch (error) {
+        console.error('[Database] Failed to load expo-sqlite:', error);
+        throw error;
+    }
+};
+
+// Web storage keys
+const WEB_KEY_USER = 'user';
+const WEB_KEY_QUESTIONNAIRE = 'questionnaire';
+const WEB_KEY_SCANS = 'scans';
+const WEB_KEY_RECOMMENDATIONS = 'recommendations';
+const WEB_KEY_VIDEOS = 'videos';
+const WEB_KEY_SYNC_LOG = 'sync_log';
+
+// ─── Web Platform Helper Functions ────────────────────────────
+// No-op functions for operations that don't make sense on web
+
+const webNoOp = () => {
+    return null;
+};
+
+// User data helpers
+const webGetUser = () => {
+    try {
+        const stored = localStorage.getItem(`kneeoa_${WEB_KEY_USER}`);
+        return stored ? JSON.parse(stored) : null;
+    } catch (error) {
+        console.error('[Database] webGetUser failed:', error);
+        return null;
+    }
+};
+
+const webSaveUser = (userData) => {
+    try {
+        webStorage.setItem(WEB_KEY_USER, userData);
+    } catch (error) {
+        console.error('[Database] webSaveUser failed:', error);
+    }
+};
+
+const webClearUserData = () => {
+    try {
+        localStorage.removeItem(`kneeoa_${WEB_KEY_USER}`);
+        localStorage.removeItem(`kneeoa_${WEB_KEY_QUESTIONNAIRE}`);
+        localStorage.removeItem(`kneeoa_${WEB_KEY_SCANS}`);
+        localStorage.removeItem(`kneeoa_${WEB_KEY_RECOMMENDATIONS}`);
+        webStorage.data = {};
+    } catch (error) {
+        console.error('[Database] webClearUserData failed:', error);
+    }
+};
+
+// Profile data helpers
+const webSaveCompleteProfile = (completeProfile) => {
+    try {
+        webStorage.setItem(WEB_KEY_USER, completeProfile.user);
+        if (completeProfile.questionnaire) {
+            webStorage.setItem(WEB_KEY_QUESTIONNAIRE, completeProfile.questionnaire);
+        }
+        if (completeProfile.scanHistory) {
+            webStorage.setItem(WEB_KEY_SCANS, completeProfile.scanHistory);
+        }
+        if (completeProfile.recommendations) {
+            webStorage.setItem(WEB_KEY_RECOMMENDATIONS, completeProfile.recommendations);
+        }
+    } catch (error) {
+        console.error('[Database] webSaveCompleteProfile failed:', error);
+    }
+};
+
+// Questionnaire helpers
+const webGetQuestionnaire = (userId) => {
+    try {
+        const stored = localStorage.getItem(`kneeoa_${WEB_KEY_QUESTIONNAIRE}`);
+        const data = stored ? JSON.parse(stored) : null;
+        if (data && data.user_id === userId) {
+            return data;
+        }
+        return null;
+    } catch (error) {
+        console.error('[Database] webGetQuestionnaire failed:', error);
+        return null;
+    }
+};
+
+// Scan history helpers
+const webGetScans = (userId) => {
+    try {
+        const stored = localStorage.getItem(`kneeoa_${WEB_KEY_SCANS}`);
+        const scans = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(scans)) {
+            return scans.filter(scan => scan.user_id === userId);
+        }
+        return [];
+    } catch (error) {
+        console.error('[Database] webGetScans failed:', error);
+        return [];
+    }
+};
+
+// Recommendations helpers
+const webGetRecommendations = (userId) => {
+    try {
+        const stored = localStorage.getItem(`kneeoa_${WEB_KEY_RECOMMENDATIONS}`);
+        const recs = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(recs)) {
+            return recs.filter(rec => rec.user_id === userId);
+        }
+        return [];
+    } catch (error) {
+        console.error('[Database] webGetRecommendations failed:', error);
+        return [];
+    }
+};
 
 // ── Initialisation ─────────────────────────────────────────────
 
 export const getDatabase = async () => {
     if (db) return db;
+    
+    if (isWeb) {
+        console.log('[Database] Web platform: Returning null (using localStorage)');
+        return null;
+    }
+    
+    const SQLite = await loadSQLite();
+    if (!SQLite) {
+        throw new Error('expo-sqlite not available');
+    }
+    
     db = await SQLite.openDatabaseAsync(DB_NAME);
     await initializeTables(db);
     return db;
@@ -118,6 +330,13 @@ const initializeTables = async (database) => {
  * This ensures we don't have stale data mixed with new server data.
  */
 export const clearLocalUserData = async () => {
+    if (isWeb) {
+        console.log('[Database] Clearing local user data (web)...');
+        webClearUserData();
+        console.log('[Database] Local user data cleared successfully (web)');
+        return;
+    }
+    
     const database = await getDatabase();
     
     console.log('[Database] Clearing local user data...');
@@ -143,6 +362,12 @@ export const clearLocalUserData = async () => {
 };
 
 export const saveUser = async (userData) => {
+    if (isWeb) {
+        console.log('[Database] Saving user (web)...');
+        webSaveUser(userData);
+        return userData.id || null;
+    }
+    
     const database = await getDatabase();
     const result = await database.runAsync(
         `INSERT OR REPLACE INTO users
@@ -162,6 +387,11 @@ export const saveUser = async (userData) => {
 };
 
 export const getUser = async () => {
+    if (isWeb) {
+        console.log('[Database] Getting user (web)...');
+        return webGetUser();
+    }
+    
     const database = await getDatabase();
     return await database.getFirstAsync(
         'SELECT * FROM users ORDER BY updated_at DESC LIMIT 1'
@@ -169,6 +399,11 @@ export const getUser = async () => {
 };
 
 export const deleteUser = async () => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return null;
+    }
+    
     const database = await getDatabase();
     await database.runAsync('DELETE FROM users');
 };
@@ -176,6 +411,11 @@ export const deleteUser = async () => {
 // ── Questionnaire Operations ───────────────────────────────────
 
 export const saveQuestionnaireResponse = async (response) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return null;
+    }
+    
     const database = await getDatabase();
     const result = await database.runAsync(
         `INSERT INTO questionnaire_responses
@@ -209,6 +449,11 @@ export const saveQuestionnaireResponse = async (response) => {
 };
 
 export const getLatestQuestionnaire = async (userId) => {
+    if (isWeb) {
+        console.log('[Database] Getting latest questionnaire (web)...');
+        return webGetQuestionnaire(userId);
+    }
+    
     const database = await getDatabase();
     return await database.getFirstAsync(
         'SELECT * FROM questionnaire_responses WHERE user_id = ? ORDER BY completed_at DESC LIMIT 1',
@@ -217,6 +462,11 @@ export const getLatestQuestionnaire = async (userId) => {
 };
 
 export const getAllQuestionnaires = async (userId) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return [];
+    }
+    
     const database = await getDatabase();
     return await database.getAllAsync(
         'SELECT * FROM questionnaire_responses WHERE user_id = ? ORDER BY completed_at DESC',
@@ -227,6 +477,11 @@ export const getAllQuestionnaires = async (userId) => {
 // ── Scan Operations ────────────────────────────────────────────
 
 export const saveScanResult = async (scanData) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return null;
+    }
+    
     const database = await getDatabase();
     const result = await database.runAsync(
         `INSERT INTO scan_history
@@ -250,6 +505,11 @@ export const saveScanResult = async (scanData) => {
 };
 
 export const getScanHistory = async (userId) => {
+    if (isWeb) {
+        console.log('[Database] Getting scan history (web)...');
+        return webGetScans(userId);
+    }
+    
     const database = await getDatabase();
     return await database.getAllAsync(
         'SELECT * FROM scan_history WHERE user_id = ? ORDER BY scanned_at DESC',
@@ -258,6 +518,11 @@ export const getScanHistory = async (userId) => {
 };
 
 export const getScanById = async (scanId) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return null;
+    }
+    
     const database = await getDatabase();
     return await database.getFirstAsync(
         'SELECT * FROM scan_history WHERE id = ?',
@@ -268,6 +533,11 @@ export const getScanById = async (scanId) => {
 // ── Recommendations Operations ─────────────────────────────────
 
 export const saveRecommendation = async (recData) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return null;
+    }
+    
     const database = await getDatabase();
     const result = await database.runAsync(
         `INSERT INTO recommendations
@@ -290,6 +560,13 @@ export const saveRecommendation = async (recData) => {
  * This is the main function for the Fetch-and-Sync pattern.
  */
 export const saveCompleteUserProfile = async (completeProfile) => {
+    if (isWeb) {
+        console.log('[Database] Saving complete user profile (web)...');
+        webSaveCompleteProfile(completeProfile);
+        console.log('[Database] Complete user profile saved successfully (web)');
+        return;
+    }
+    
     const database = await getDatabase();
     
     console.log('[Database] Saving complete user profile...');
@@ -373,6 +650,11 @@ export const saveCompleteUserProfile = async (completeProfile) => {
 };
 
 export const getRecommendations = async (userId) => {
+    if (isWeb) {
+        console.log('[Database] Getting recommendations (web)...');
+        return webGetRecommendations(userId);
+    }
+    
     const database = await getDatabase();
     return await database.getAllAsync(
         'SELECT * FROM recommendations WHERE user_id = ? ORDER BY generated_at DESC',
@@ -381,6 +663,11 @@ export const getRecommendations = async (userId) => {
 };
 
 export const getRecommendationForScan = async (scanId) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return null;
+    }
+    
     const database = await getDatabase();
     return await database.getFirstAsync(
         'SELECT * FROM recommendations WHERE scan_id = ?',
@@ -391,6 +678,11 @@ export const getRecommendationForScan = async (scanId) => {
 // ── Video Library Operations ───────────────────────────────────
 
 export const getVideoLibrary = async (category = null) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return [];
+    }
+    
     const database = await getDatabase();
     if (category) {
         return await database.getAllAsync(
@@ -404,6 +696,11 @@ export const getVideoLibrary = async (category = null) => {
 };
 
 export const seedVideoLibrary = async () => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return;
+    }
+    
     const database = await getDatabase();
     const count = await database.getFirstAsync(
         'SELECT COUNT(*) as count FROM video_references'
@@ -534,6 +831,10 @@ export const seedVideoLibrary = async () => {
 // ── Sync Log ───────────────────────────────────────────────────
 
 const logSyncAction = async (tableName, recordId, action) => {
+    if (isWeb) {
+        return;
+    }
+    
     const database = await getDatabase();
     await database.runAsync(
         `INSERT INTO sync_log (table_name, record_id, action, attempted_at)
@@ -543,6 +844,11 @@ const logSyncAction = async (tableName, recordId, action) => {
 };
 
 export const getPendingSyncItems = async () => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return [];
+    }
+    
     const database = await getDatabase();
     return await database.getAllAsync(
         "SELECT * FROM sync_log WHERE status = 'pending' ORDER BY attempted_at"
@@ -550,6 +856,11 @@ export const getPendingSyncItems = async () => {
 };
 
 export const markSynced = async (syncLogId) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return;
+    }
+    
     const database = await getDatabase();
     await database.runAsync(
         "UPDATE sync_log SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
@@ -558,6 +869,11 @@ export const markSynced = async (syncLogId) => {
 };
 
 export const markSyncFailed = async (syncLogId, errorMessage) => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return;
+    }
+    
     const database = await getDatabase();
     await database.runAsync(
         "UPDATE sync_log SET status = 'failed', error_message = ?, attempted_at = datetime('now') WHERE id = ?",
@@ -568,6 +884,11 @@ export const markSyncFailed = async (syncLogId, errorMessage) => {
 // ── Cleanup ────────────────────────────────────────────────────
 
 export const clearAllData = async () => {
+    if (isWeb) {
+        console.log('[Database] Web platform: SQLite operation bypassed');
+        return;
+    }
+    
     const database = await getDatabase();
     await database.execAsync(`
         DELETE FROM sync_log;

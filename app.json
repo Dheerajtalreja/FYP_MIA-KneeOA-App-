@@ -9,6 +9,13 @@
     "scheme": "kneeoa",
     "android": {
       "package": "com.azfarsuhail.kneeoaapp",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",

@@ -4,6 +4,7 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { createStackNavigator } from '@react-navigation/stack';
 import * as Linking from 'expo-linking';
 
+import { AuthProvider } from './src/contexts/AuthContext';
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -24,6 +25,7 @@ const DEEP_LINK_PREFIX = 'https://kneeoa.online/';
 function NavigationHandler({ navigationRef }) {
     const hasHandledInitialLink = useRef(false);
     const pendingLink = useRef(null);
+    const isNavigationReady = useRef(false);
 
     useEffect(() => {
         const handleDeepLink = async (url) => {
@@ -45,15 +47,16 @@ function NavigationHandler({ navigationRef }) {
 
                     console.log('[DeepLink] Token extracted:', token);
 
-                    // Wait for navigation to be ready
+                    // CRITICAL FIX: Only navigate if navigation is confirmed ready
                     if (navigationRef?.isReady()) {
-                        console.log('[DeepLink] Navigating to ResetPassword screen');
+                        console.log('[DeepLink] Navigation ready, routing to ResetPassword');
                         navigationRef.navigate('ResetPassword', { resetToken: token });
                         hasHandledInitialLink.current = true;
                         pendingLink.current = null;
                     } else {
-                        console.log('[DeepLink] Navigation not ready, storing pending link');
-                        pendingLink.current = { resetToken: token };
+                        console.log('[DeepLink] Navigation NOT ready, QUEUING link for later');
+                        // Store the link for later processing
+                        pendingLink.current = { resetToken: token, timestamp: Date.now() };
                     }
                 }
             } catch (error) {
@@ -64,7 +67,8 @@ function NavigationHandler({ navigationRef }) {
         // Handle initial deep link (app launched from link)
         Linking.getInitialURL().then((url) => {
             if (url) {
-                console.log('[DeepLink] Initial URL:', url);
+                console.log('[DeepLink] Initial URL received:', url);
+                // Don't process immediately - wait for navigation to be ready
                 handleDeepLink(url);
             }
         });
@@ -80,14 +84,41 @@ function NavigationHandler({ navigationRef }) {
         };
     }, [navigationRef]);
 
-    // Check for pending link when navigation becomes ready
+    // CRITICAL FIX: Monitor navigation readiness and process pending links
     useEffect(() => {
-        if (navigationRef?.isReady() && pendingLink.current) {
-            console.log('[DeepLink] Navigation ready, processing pending link');
-            const { resetToken } = pendingLink.current;
-            navigationRef.navigate('ResetPassword', { resetToken });
-            pendingLink.current = null;
-        }
+        const checkNavigationReady = () => {
+            if (navigationRef?.isReady()) {
+                console.log('[DeepLink] Navigation container is now READY');
+                isNavigationReady.current = true;
+
+                // Process any pending links
+                if (pendingLink.current) {
+                    console.log('[DeepLink] Processing queued deep link');
+                    const { resetToken } = pendingLink.current;
+                    
+                    // Double-check before navigating
+                    if (navigationRef.isReady()) {
+                        navigationRef.navigate('ResetPassword', { resetToken });
+                        pendingLink.current = null;
+                        hasHandledInitialLink.current = true;
+                    }
+                }
+            }
+        };
+
+        // Initial check
+        checkNavigationReady();
+
+        // Poll periodically until navigation is ready (safety net)
+        const pollInterval = setInterval(() => {
+            if (!isNavigationReady.current && navigationRef?.isReady()) {
+                checkNavigationReady();
+            }
+        }, 100);
+
+        return () => {
+            clearInterval(pollInterval);
+        };
     }, [navigationRef]);
 
     return null;
@@ -96,8 +127,11 @@ function NavigationHandler({ navigationRef }) {
 export default function App() {
     const navigationRef = useNavigationContainerRef();
 
+    // CRITICAL: AuthProvider MUST wrap NavigationContainer to ensure
+    // all screens (including LoginScreen) have access to auth methods
     return (
-        <NavigationContainer
+        <AuthProvider>
+            <NavigationContainer
             ref={navigationRef}
             linking={{
                 prefixes: [DEEP_LINK_PREFIX],
@@ -137,5 +171,6 @@ export default function App() {
             </Stack.Navigator>
             <NavigationHandler navigationRef={navigationRef} />
         </NavigationContainer>
+        </AuthProvider>
     );
 }

@@ -222,40 +222,28 @@ export const fetchCompleteUserProfile = async () => {
         // Fetch user's questionnaire responses
         let questionnaire = null;
         try {
-            const questionnaireResponse = await fetch('/api/v1/user/questionnaire', {
-                headers: { Authorization: `Bearer ${authToken}` },
-            });
-            if (questionnaireResponse.ok) {
-                questionnaire = await questionnaireResponse.json();
-            }
+            questionnaire = await authFetch('/api/v1/user/questionnaire');
         } catch (e) {
             console.warn('[Fetch-and-Sync] Failed to fetch questionnaire:', e.message);
+            throw e;
         }
 
         // Fetch user's scan history
         let scanHistory = [];
         try {
-            const scansResponse = await fetch('/api/v1/user/scans', {
-                headers: { Authorization: `Bearer ${authToken}` },
-            });
-            if (scansResponse.ok) {
-                scanHistory = await scansResponse.json();
-            }
+            scanHistory = await authFetch('/api/v1/user/scans');
         } catch (e) {
             console.warn('[Fetch-and-Sync] Failed to fetch scan history:', e.message);
+            throw e;
         }
 
         // Fetch user's recommendations
         let recommendations = [];
         try {
-            const recsResponse = await fetch('/api/v1/user/recommendations', {
-                headers: { Authorization: `Bearer ${authToken}` },
-            });
-            if (recsResponse.ok) {
-                recommendations = await recsResponse.json();
-            }
+            recommendations = await authFetch('/api/v1/user/recommendations');
         } catch (e) {
             console.warn('[Fetch-and-Sync] Failed to fetch recommendations:', e.message);
+            throw e;
         }
 
         const completeProfile = {
