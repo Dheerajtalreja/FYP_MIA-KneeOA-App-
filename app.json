@@ -14,24 +14,16 @@
     "assetBundlePatterns": [
       "**/*"
     ],
-    "ios": {
-      "supportsTablet": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "31142275-1fbd-4a25-b8ef-9518182f366c"
-      }
-    },
-    "owner": "azfarsuhail",
     "scheme": "kneeoa",
     "android": {
       "package": "com.azfarsuhail.kneeoaapp",
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.RECORD_AUDIO"
       ],
       "intentFilters": [
         {
@@ -59,7 +51,21 @@
           "cameraPermission": "Allow KneeOA Engine to access the camera to capture knee X-ray images.",
           "photosPermission": "Allow KneeOA Engine to access your photo library for X-ray uploads."
         }
+      ],
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "660af8ba-3112-45df-99f8-a9e511070d53"
+      }
+    }
   }
 }

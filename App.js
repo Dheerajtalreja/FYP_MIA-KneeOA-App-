@@ -205,7 +205,11 @@ function AppNavigator() {
                     screens: {
                         ResetPassword: {
                             path: 'reset-password',
-                            parse: () => ({}),
+                            parse: {
+                                // parse must be an object mapping param names to functions
+                                // Since we don't use URL params, return empty object
+                                token: (token) => token,
+                            },
                         },
                     },
                 },
