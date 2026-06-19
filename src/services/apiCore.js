@@ -222,15 +222,97 @@ const applyHeaders = (headers = {}, body = null) => {
     return nextHeaders;
 };
 
-const handleResponse = async (response) => {
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+const subscribeTokenRefresh = (cb) => {
+    refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token) => {
+    refreshSubscribers.map(cb => cb(token));
+    refreshSubscribers = [];
+};
+
+const handleResponse = async (response, originalRequest) => {
     if (!response.ok) {
+        if (response.status === 401 && !originalRequest._retry) {
+            if (isRefreshing) {
+                return new Promise(resolve => {
+                    subscribeTokenRefresh(token => {
+                        originalRequest.headers.set('Authorization', `Bearer ${token}`);
+                        resolve(fetch(originalRequest));
+                    });
+                }).then(res => handleResponse(res, originalRequest));
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                const data = await refreshAuthToken();
+                const newToken = data?.access_token;
+                isRefreshing = false;
+                if (newToken) {
+                    onRefreshed(newToken);
+                    originalRequest.headers.set('Authorization', `Bearer ${newToken}`);
+                    return handleResponse(await fetch(originalRequest), originalRequest);
+                }
+            } catch (refreshError) {
+                isRefreshing = false;
+                throw await mapErrorResponse(response);
+            }
+        }
         throw await mapErrorResponse(response);
     }
 
     return parseResponseBody(response);
 };
 
-const request = async (path, options = {}, { auth = false } = {}) => {
+/**
+ * Enhanced error message extractor for robust error reporting
+ */
+const extractErrorMessage = (payload) => {
+    if (payload === null || payload === undefined) return null;
+    if (typeof payload === 'string') return payload.trim() || null;
+    if (typeof payload === 'number' || typeof payload === 'boolean') return String(payload);
+
+    if (Array.isArray(payload)) {
+        const messages = payload.map(item => extractErrorMessage(item)).filter(Boolean);
+        return messages.length ? messages.join(' ') : null;
+    }
+
+    if (typeof payload === 'object') {
+        // Try common field names for errors
+        for (const key of ['detail', 'message', 'error', 'msg', 'title']) {
+            const message = extractErrorMessage(payload[key]);
+            if (message) return message;
+        }
+
+        // Try validation errors
+        if (payload.errors) {
+            const message = extractErrorMessage(payload.errors);
+            if (message) return message;
+        }
+
+        // Try values of the object
+        const nestedMessages = Object.values(payload)
+            .map(item => extractErrorMessage(item))
+            .filter(Boolean);
+
+        if (nestedMessages.length) return nestedMessages.join(' ');
+
+        try {
+            return JSON.stringify(payload);
+        } catch {
+            return 'An unexpected error occurred.';
+        }
+    }
+
+    return null;
+};
+
+const request = async (path, options = {}, { auth = false, timeout = 15000 } = {}) => {
     await ensureAuthStateLoaded();
 
     const nextHeaders = applyHeaders(options.headers || {}, options.body ?? null);
@@ -239,12 +321,27 @@ const request = async (path, options = {}, { auth = false } = {}) => {
         nextHeaders.set('Authorization', `Bearer ${authToken}`);
     }
 
-    const response = await fetch(buildApiUrl(normalizePath(path)), {
-        ...options,
-        headers: nextHeaders,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    return handleResponse(response);
+    try {
+        const url = buildApiUrl(normalizePath(path));
+        const originalRequest = new Request(url, {
+            ...options,
+            headers: nextHeaders,
+            signal: controller.signal,
+        });
+
+        const response = await fetch(originalRequest);
+        return await handleResponse(response, originalRequest);
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new ApiError('Request timed out. Please check your internet connection.', { status: 408, code: 'timeout' });
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 };
 
 const validateRequiredString = (value, fieldName) => {
@@ -394,6 +491,23 @@ export const loginUser = async (email, password, grantType = 'password') => {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: formData.toString(),
+    });
+};
+
+export const requestPasswordReset = async (email) => {
+    validateRequiredString(email, 'email');
+    return request('/api/v1/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    });
+};
+
+export const resetPassword = async (token, newPassword) => {
+    validateRequiredString(token, 'token');
+    validateRequiredString(newPassword, 'new_password');
+    return request('/api/v1/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token, new_password: newPassword }),
     });
 };
 
@@ -580,6 +694,72 @@ export const fetchLatestFromCloud = async () => request('/api/v1/mobile/sync/dat
 export const fetchSyncSummary = async () => request('/api/v1/mobile/sync/summary', {}, { auth: true });
 
 export const fetchSyncStatus = async () => request('/api/v1/mobile/sync/status', {}, { auth: true });
+
+/**
+ * Internal helper to refresh the access token using a refresh token.
+ */
+export const refreshAuthToken = async () => {
+    if (!refreshToken) throw new UnauthorizedError('No refresh token available.');
+
+    try {
+        const data = await request('/api/v1/auth/refresh', {
+            method: 'POST',
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        if (data?.access_token) {
+            setAuthToken(data.access_token);
+            if (data.refresh_token) setRefreshToken(data.refresh_token);
+            return data;
+        }
+        throw new UnauthorizedError('Refresh failed: No access token received.');
+    } catch (error) {
+        clearAuthTokens();
+        throw error;
+    }
+};
+
+/**
+ * Fetch-and-Sync Pattern: Get fresh user data from backend.
+ * This is the 'Source of Truth' that should be called on login.
+ */
+export const fetchCompleteUserProfile = async () => {
+    try {
+        console.log('[Fetch-and-Sync] Fetching complete user profile from backend...');
+
+        // Fetch user profile
+        const profile = await fetchProfile();
+
+        // Fetch related data in parallel with safe error handling (404 is okay for new users)
+        const [questionnaireResult, scansResult, recommendationsResult] = await Promise.allSettled([
+            authFetch('/api/v1/user/questionnaire'),
+            authFetch('/api/v1/user/scans'),
+            authFetch('/api/v1/user/recommendations')
+        ]);
+
+        const getResultValue = (result, defaultValue) => {
+            if (result.status === 'fulfilled') return result.value;
+            // 404 means no data yet, which is normal for new accounts
+            if (result.reason?.status === 404) return defaultValue;
+            console.warn(`[Fetch-and-Sync] Error fetching secondary data:`, result.reason);
+            return defaultValue;
+        };
+
+        const completeProfile = {
+            user: profile,
+            questionnaire: getResultValue(questionnaireResult, null),
+            scanHistory: getResultValue(scansResult, []),
+            recommendations: getResultValue(recommendationsResult, []),
+            fetchedAt: new Date().toISOString(),
+        };
+
+        console.log('[Fetch-and-Sync] Complete profile fetched successfully');
+        return completeProfile;
+    } catch (error) {
+        console.error('[Fetch-and-Sync] Failed to fetch complete profile:', error);
+        throw error;
+    }
+};
 
 export const isOnline = async () => {
     try {

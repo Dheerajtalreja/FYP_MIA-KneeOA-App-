@@ -99,37 +99,40 @@ const LoginScreen = ({ navigation }) => {
             const result = await login(email.trim().toLowerCase(), password);
             
             if (!result?.success) {
-                throw new Error(result?.message || 'Authentication failed');
+                Alert.alert('Login Failed', result?.message || 'Invalid credentials.');
+                setLoading(false);
+                return;
             }
 
             const token = result.token;
-            const authResponse = result.user;
 
             console.log('[LoginScreen] Authentication successful, fetching complete profile...');
 
             // Step 2: Fetch-and-Sync Pattern
-            // Clear local data first to avoid stale data
-            await clearLocalUserData();
-            console.log('[LoginScreen] Local data cleared');
+            try {
+                // Clear local data first to avoid stale data
+                await clearLocalUserData();
 
-            // Fetch complete profile from backend (Source of Truth)
-            const completeProfile = await fetchCompleteUserProfile();
-            console.log('[LoginScreen] Complete profile fetched from backend');
+                // Fetch complete profile from backend (Source of Truth)
+                const completeProfile = await fetchCompleteUserProfile();
 
-            // Step 3: Save fresh server data to local database
-            await saveCompleteUserProfile({
-                ...completeProfile,
-                user: {
-                    ...completeProfile.user,
-                    token,
-                    refreshToken: result.user?.refreshToken || null,
-                },
-            });
-            console.log('[LoginScreen] Fresh server data saved to local database');
+                // Step 3: Save fresh server data to local database
+                await saveCompleteUserProfile({
+                    ...completeProfile,
+                    user: {
+                        ...completeProfile.user,
+                        token,
+                    },
+                });
 
-            // Step 4: Navigate to home screen
-            navigation.replace('Questionnaire');
-            console.log('[LoginScreen] Login successful, navigating to Questionnaire');
+                console.log('[LoginScreen] Sync complete, navigating...');
+                navigation.replace('Home');
+            } catch (syncError) {
+                console.warn('[LoginScreen] Sync failed, proceeding with basic auth:', syncError);
+                // Even if sync fails, we have the token, so we can proceed to Home
+                // The app will try to load what it can.
+                navigation.replace('Home');
+            }
 
         } catch (error) {
             console.error('[LoginScreen] Login error:', error);
@@ -142,16 +145,12 @@ const LoginScreen = ({ navigation }) => {
                     role: 'patient',
                     profile: { demo: true },
                 });
-                navigation.replace('Questionnaire');
+                navigation.replace('Home');
                 return;
             }
 
-            navigation.navigate('Error', {
-                title: 'Login failed',
-                message: error.message || 'Unable to sign in right now. Please check your connection and try again.',
-                retryRoute: 'Login',
-                retryLabel: 'Try Sign In Again',
-            });
+            const errorMessage = error.message || 'Unable to sign in. Please check your credentials and connection.';
+            Alert.alert('Sign In Error', errorMessage);
         } finally {
             setLoading(false);
         }
@@ -188,14 +187,18 @@ const LoginScreen = ({ navigation }) => {
             </LinearGradient>
 
             {/* --- SCROLLABLE FORM SECTION --- */}
-            <ScrollView
-                style={StyleSheet.absoluteFill} // Poori screen cover karega par header iske upar rahega
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                overScrollMode="never"
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={StyleSheet.absoluteFill}
             >
+                <ScrollView
+                    style={styles.flex}
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                    overScrollMode="never"
+                >
                 <Animated.View
                     style={[
                         styles.formContainer,
@@ -289,6 +292,7 @@ const LoginScreen = ({ navigation }) => {
                     </View>
                 </Animated.View>
             </ScrollView>
+            </KeyboardAvoidingView>
         </View>
     );
 };
@@ -297,6 +301,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#0F1923',
+    },
+    flex: {
+        flex: 1,
     },
     topSection: {
         position: 'absolute',

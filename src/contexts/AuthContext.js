@@ -27,20 +27,37 @@ export const AuthProvider = ({ children }) => {
                 const state = await loadStoredAuthState();
                 
                 if (state?.accessToken) {
+                    // Update API client first
+                    setAuthToken(state.accessToken);
+                    if (state.refreshToken) apiSetRefreshToken(state.refreshToken);
+
                     setAccessToken(state.accessToken);
                     setRefreshToken(state.refreshToken || null);
-                    setAuthToken(state.accessToken);
-                    
-                    // Auto-login if tokens exist
-                    setIsAuthenticated(true);
-                    setUser({ email: 'logged_in_user' }); // Basic user info
-                    console.log('[AuthContext] Auto-login successful');
+
+                    // Try to load actual user info from local DB
+                    try {
+                        const localUser = await getUser();
+                        if (localUser) {
+                            setUser(localUser);
+                            setIsAuthenticated(true);
+                            console.log('[AuthContext] Restored user from local DB');
+                        } else {
+                            // If tokens exist but no DB record, we're in an inconsistent state
+                            // We'll mark as authenticated but with minimal info
+                            setUser({ email: 'restored_user' });
+                            setIsAuthenticated(true);
+                            console.log('[AuthContext] Tokens found but no local user record');
+                        }
+                    } catch (dbError) {
+                        console.warn('[AuthContext] Failed to load local user during init:', dbError);
+                        setIsAuthenticated(true);
+                    }
                 }
             } catch (error) {
                 console.error('[AuthContext] Failed to load auth state:', error);
             } finally {
                 setIsLoading(false);
-                setAuthReady(true);  // ✅ Signal that auth state loading is complete
+                setAuthReady(true);
             }
         };
 

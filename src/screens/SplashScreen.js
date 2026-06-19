@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hydrateAuthState } from '../services/api';
+import { getUser, getLatestQuestionnaire } from '../services/database';
 
 const { width, height } = Dimensions.get('window');
 
@@ -104,12 +105,33 @@ const SplashScreen = ({ navigation }) => {
         // Navigate to the authenticated route after bootstrapping the persisted session.
         const timer = setTimeout(() => {
             hydrateAuthState()
-                .then(({ accessToken }) => {
+                .then(async ({ accessToken }) => {
                     if (!active) return;
-                    navigation.replace(accessToken ? 'Home' : 'Login');
+
+                    if (accessToken) {
+                        try {
+                            const user = await getUser();
+                            const userKey = user?.server_id || user?.email || user?.id;
+
+                            if (userKey) {
+                                const questionnaire = await getLatestQuestionnaire(userKey);
+                                if (questionnaire) {
+                                    navigation.replace('Home');
+                                    return;
+                                }
+                            }
+                            navigation.replace('Questionnaire');
+                        } catch (err) {
+                            console.warn('[Splash] Failed to check state, defaulting to Home:', err);
+                            navigation.replace('Home');
+                        }
+                    } else {
+                        navigation.replace('Login');
+                    }
                 })
-                .catch(() => {
+                .catch((err) => {
                     if (!active) return;
+                    console.error('[Splash] Auth hydration failed:', err);
                     navigation.replace('Login');
                 });
         }, 3000);

@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 const DB_NAME = 'kneeoa_local.db';
 let db = null;
 let sqliteLoaded = false;
+let dbPromise = null; // ✅ Lock to prevent concurrent initialization
 
 // ─── Web Platform Mock Storage ────────────────────────────────
 // Simple localStorage-based mock for web development
@@ -215,18 +216,48 @@ export const getDatabase = async () => {
     if (db) return db;
     
     if (isWeb) {
-        console.log('[Database] Web platform: Returning null (using localStorage)');
-        return null;
+        console.log('[Database] Web platform: Returning mock database object');
+        // Minimal mock to prevent crashes on web
+        return {
+            getAllAsync: async (query, params) => {
+                if (query.includes('FROM users')) return [webGetUser()].filter(Boolean);
+                if (query.includes('FROM scan_history')) return webGetScans(params?.[0]);
+                if (query.includes('FROM questionnaire_responses')) return [webGetQuestionnaire(params?.[0])].filter(Boolean);
+                if (query.includes('FROM recommendations')) return webGetRecommendations(params?.[0]);
+                return [];
+            },
+            getFirstAsync: async (query, params) => {
+                if (query.includes('FROM users')) return webGetUser();
+                if (query.includes('FROM scan_history')) return webGetScans(params?.[0])[0] || null;
+                if (query.includes('FROM questionnaire_responses')) return webGetQuestionnaire(params?.[0]);
+                return null;
+            },
+            runAsync: async () => ({ lastInsertRowId: 1, changes: 1 }),
+            execAsync: async () => {},
+            withTransactionAsync: async (task) => await task(),
+        };
     }
-    
-    const SQLite = await loadSQLite();
-    if (!SQLite) {
-        throw new Error('expo-sqlite not available');
-    }
-    
-    db = await SQLite.openDatabaseAsync(DB_NAME);
-    await initializeTables(db);
-    return db;
+
+    if (dbPromise) return dbPromise;
+
+    dbPromise = (async () => {
+        try {
+            const SQLite = await loadSQLite();
+            if (!SQLite) {
+                throw new Error('expo-sqlite not available');
+            }
+
+            const instance = await SQLite.openDatabaseAsync(DB_NAME);
+            await initializeTables(instance);
+            db = instance;
+            return db;
+        } catch (error) {
+            dbPromise = null;
+            throw error;
+        }
+    })();
+
+    return dbPromise;
 };
 
 const initializeTables = async (database) => {
@@ -571,82 +602,87 @@ export const saveCompleteUserProfile = async (completeProfile) => {
     
     console.log('[Database] Saving complete user profile...');
     
-    // Use transaction to ensure atomicity
-    await database.executeAsync(async (exec) => {
-        // Save user
-        await exec(
-            `INSERT OR REPLACE INTO users
-             (server_id, email, full_name, role, token, refresh_token, profile_data, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-            [
-                completeProfile.user?.user_id || completeProfile.user?.id || null,
-                completeProfile.user?.email || null,
-                completeProfile.user?.full_name || null,
-                completeProfile.user?.role || 'patient',
-                null, // token will be set separately
-                null, // refresh_token will be set separately
-                JSON.stringify(completeProfile.user),
-            ]
-        );
-
-        // Save questionnaire if exists
-        if (completeProfile.questionnaire) {
-            const q = completeProfile.questionnaire;
-            await exec(
-                `INSERT OR REPLACE INTO questionnaire_responses
-                 (user_id, age, gender, weight, height, pain_level, pain_location, pain_duration,
-                  mobility_score, can_bend_fully, can_climb_stairs, can_walk_30min,
-                  previous_injuries, surgeries, medications, family_history, additional_notes, completed_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    try {
+        // Use transaction to ensure atomicity
+        await database.withTransactionAsync(async () => {
+            // Save user
+            await database.runAsync(
+                `INSERT OR REPLACE INTO users
+                 (server_id, email, full_name, role, token, refresh_token, profile_data, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
                 [
-                    completeProfile.user?.user_id || completeProfile.user?.id,
-                    q.age, q.gender, q.weight, q.height,
-                    q.pain_level, q.pain_location, q.pain_duration,
-                    q.mobility_score, q.can_bend_fully, q.can_climb_stairs, q.can_walk_30min,
-                    q.previous_injuries, q.surgeries, q.medications, q.family_history, q.additional_notes,
+                    completeProfile.user?.user_id || completeProfile.user?.id || null,
+                    completeProfile.user?.email || null,
+                    completeProfile.user?.full_name || null,
+                    completeProfile.user?.role || 'patient',
+                    null, // token will be set separately
+                    null, // refresh_token will be set separately
+                    JSON.stringify(completeProfile.user || {}),
                 ]
             );
-        }
 
-        // Save scan history
-        if (completeProfile.scanHistory && Array.isArray(completeProfile.scanHistory)) {
-            for (const scan of completeProfile.scanHistory) {
-                await exec(
-                    `INSERT OR REPLACE INTO scan_history
-                     (user_id, image_uri, image_type, view_type, knee_side, kl_grade, risk_score,
-                      analysis_result, annotations, scanned_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+            // Save questionnaire if exists
+            if (completeProfile.questionnaire) {
+                const q = completeProfile.questionnaire;
+                await database.runAsync(
+                    `INSERT OR REPLACE INTO questionnaire_responses
+                     (user_id, age, gender, weight, height, pain_level, pain_location, pain_duration,
+                      mobility_score, can_bend_fully, can_climb_stairs, can_walk_30min,
+                      previous_injuries, surgeries, medications, family_history, additional_notes, completed_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
                     [
                         completeProfile.user?.user_id || completeProfile.user?.id,
-                        scan.image_uri, scan.image_type, scan.view_type, scan.knee_side,
-                        scan.kl_grade, scan.risk_score,
-                        JSON.stringify(scan.analysis_result),
-                        JSON.stringify(scan.annotations),
+                        q.age, q.gender, q.weight, q.height,
+                        q.pain_level, q.pain_location, q.pain_duration,
+                        q.mobility_score, q.can_bend_fully, q.can_climb_stairs, q.can_walk_30min,
+                        q.previous_injuries, q.surgeries, q.medications, q.family_history, q.additional_notes,
                     ]
                 );
             }
-        }
 
-        // Save recommendations
-        if (completeProfile.recommendations && Array.isArray(completeProfile.recommendations)) {
-            for (const rec of completeProfile.recommendations) {
-                await exec(
-                    `INSERT INTO recommendations
-                     (user_id, scan_id, recommendation_text, exercises, lifestyle_tips)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [
-                        completeProfile.user?.user_id || completeProfile.user?.id,
-                        rec.scan_id || null,
-                        rec.text || rec.recommendation_text,
-                        rec.exercises,
-                        rec.lifestyle_tips,
-                    ]
-                );
+            // Save scan history
+            if (completeProfile.scanHistory && Array.isArray(completeProfile.scanHistory)) {
+                for (const scan of completeProfile.scanHistory) {
+                    await database.runAsync(
+                        `INSERT OR REPLACE INTO scan_history
+                         (user_id, image_uri, image_type, view_type, knee_side, kl_grade, risk_score,
+                          analysis_result, annotations, scanned_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            completeProfile.user?.user_id || completeProfile.user?.id,
+                            scan.image_uri, scan.image_type, scan.view_type, scan.knee_side,
+                            scan.kl_grade, scan.risk_score,
+                            JSON.stringify(scan.analysis_result || {}),
+                            JSON.stringify(scan.annotations || {}),
+                            scan.scanned_at || new Date().toISOString(),
+                        ]
+                    );
+                }
             }
-        }
-    });
 
-    console.log('[Database] Complete user profile saved successfully');
+            // Save recommendations
+            if (completeProfile.recommendations && Array.isArray(completeProfile.recommendations)) {
+                for (const rec of completeProfile.recommendations) {
+                    await database.runAsync(
+                        `INSERT INTO recommendations
+                         (user_id, scan_id, recommendation_text, exercises, lifestyle_tips)
+                         VALUES (?, ?, ?, ?, ?)`,
+                        [
+                            completeProfile.user?.user_id || completeProfile.user?.id,
+                            rec.scan_id || null,
+                            rec.text || rec.recommendation_text,
+                            JSON.stringify(rec.exercises || []),
+                            JSON.stringify(rec.lifestyle_tips || []),
+                        ]
+                    );
+                }
+            }
+        });
+        console.log('[Database] Complete user profile saved successfully');
+    } catch (error) {
+        console.error('[Database] Failed to save complete user profile:', error);
+        throw error;
+    }
 };
 
 export const getRecommendations = async (userId) => {

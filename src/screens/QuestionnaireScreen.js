@@ -9,6 +9,7 @@ import {
     Platform,
     Animated,
     Dimensions,
+    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS } from '../config/theme';

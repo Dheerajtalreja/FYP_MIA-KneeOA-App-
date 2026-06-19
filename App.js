@@ -22,13 +22,11 @@ const Stack = createStackNavigator();
 
 const DEEP_LINK_PREFIX = 'https://kneeoa.online/';
 
-// ✅ Shared refs for auth readiness and pending links - accessible by both App and NavigationHandler
-const authReadyRef = useRef(false);
-const pendingLinkRef = useRef(null);
-
-function NavigationHandler({ navigationRef }) {
-    const hasHandledInitialLink = useRef(false);
-    const pendingLink = pendingLinkRef;  // ✅ Use shared ref
+/**
+ * NavigationHandler - Handles deep links and navigation state transitions.
+ * This component is a child of NavigationContainer so it can access navigation state.
+ */
+function NavigationHandler({ navigationRef, authReadyRef, pendingLinkRef }) {
     const isNavigationReady = useRef(false);
 
     useEffect(() => {
@@ -36,8 +34,7 @@ function NavigationHandler({ navigationRef }) {
             try {
                 console.log('[DeepLink] Received URL:', url);
 
-                // CRITICAL FIX: Use URL API for robust query parameter extraction
-                // This properly handles URL-encoded JWT tokens with +, %, etc.
+                // Use URL API for robust query parameter extraction
                 let parsedUrl;
                 try {
                     parsedUrl = new URL(url.replace('https://kneeoa.online', 'https://example.com'));
@@ -49,41 +46,27 @@ function NavigationHandler({ navigationRef }) {
                 const path = parsedUrl.pathname;
                 const token = parsedUrl.searchParams.get('token');
 
-                console.log('[DeepLink] Path:', path);
-                console.log('[DeepLink] Token length:', token?.length);
-                console.log('[DeepLink] Token starts with:', token?.substring(0, 30) + '...');
-                console.log('[DeepLink] Full token (first 100 chars):', token?.substring(0, 100));
-
                 if (path.startsWith('/reset-password')) {
-                    if (!token || token.length === 0) {
+                    if (!token) {
                         console.error('[DeepLink] No token found in URL');
-                        console.error('[DeepLink] All query params:', Array.from(parsedUrl.searchParams.entries()));
                         return;
                     }
 
                     // Validate token format (JWT has 3 parts separated by dots)
                     const parts = token.split('.');
                     if (parts.length !== 3) {
-                        console.error('[DeepLink] Invalid token format - expected JWT with 3 parts');
-                        console.error('[DeepLink] Got parts:', parts.length);
+                        console.error('[DeepLink] Invalid token format');
                         return;
                     }
 
-                    console.log('[DeepLink] Token validated as JWT format');
-
-                    // CRITICAL FIX: Wait for BOTH navigation AND auth to be ready
+                    // Wait for BOTH navigation AND auth to be ready
                     if (navigationRef?.isReady() && authReadyRef.current) {
-                        console.log('[DeepLink] Navigation AND auth ready, routing to ResetPassword');
+                        console.log('[DeepLink] Routing to ResetPassword');
                         navigationRef.navigate('ResetPassword', { resetToken: token });
-                        hasHandledInitialLink.current = true;
-                        pendingLink.current = null;
+                        pendingLinkRef.current = null;
                     } else {
-                        const navReady = navigationRef?.isReady();
-                        const authReady = authReadyRef.current;
-                        console.log('[DeepLink] Navigation ready:', navReady, 'Auth ready:', authReady);
-                        console.log('[DeepLink] Navigation NOT ready, QUEUING link for later');
-                        // Store the link for later processing
-                        pendingLink.current = { resetToken: token, timestamp: Date.now() };
+                        console.log('[DeepLink] Queuing link for later processing');
+                        pendingLinkRef.current = { resetToken: token, timestamp: Date.now() };
                     }
                 }
             } catch (error) {
@@ -91,122 +74,127 @@ function NavigationHandler({ navigationRef }) {
             }
         };
 
-        // Handle initial deep link (app launched from link)
+        // Handle initial deep link
         Linking.getInitialURL().then((url) => {
-            if (url) {
-                console.log('[DeepLink] Initial URL received:', url);
-                // Don't process immediately - wait for navigation to be ready
-                handleDeepLink(url);
-            }
+            if (url) handleDeepLink(url);
         });
 
-        // Handle deep links when app is running in background
+        // Handle deep links when app is running
         const subscription = Linking.addEventListener('url', ({ url }) => {
-            console.log('[DeepLink] Received URL event:', url);
             handleDeepLink(url);
         });
 
-        return () => {
-            subscription.remove();
-        };
-    }, [navigationRef]);
+        return () => subscription.remove();
+    }, [navigationRef, authReadyRef, pendingLinkRef]);
 
-    // CRITICAL FIX: Monitor navigation readiness AND auth readiness, process pending links
+    // Monitor navigation readiness
     useEffect(() => {
         const checkNavigationReady = () => {
             if (navigationRef?.isReady()) {
-                console.log('[DeepLink] Navigation container is now READY');
                 isNavigationReady.current = true;
 
-                // Process any pending links (only if auth is also ready)
-                if (pendingLink.current && authReadyRef.current) {
-                    console.log('[DeepLink] Processing queued deep link (nav + auth ready)');
-                    const { resetToken } = pendingLink.current;
-                    
-                    // Double-check before navigating
-                    if (navigationRef.isReady()) {
-                        navigationRef.navigate('ResetPassword', { resetToken });
-                        pendingLink.current = null;
-                        hasHandledInitialLink.current = true;
-                    }
-                } else if (pendingLink.current && !authReadyRef.current) {
-                    console.log('[DeepLink] Waiting for auth to be ready before processing queued link');
+                // Process any pending links if auth is also ready
+                if (pendingLinkRef.current && authReadyRef.current) {
+                    const { resetToken } = pendingLinkRef.current;
+                    navigationRef.navigate('ResetPassword', { resetToken });
+                    pendingLinkRef.current = null;
                 }
             }
         };
 
-        // Initial check
-        checkNavigationReady();
-
-        // Poll periodically until navigation is ready (safety net)
-        const pollInterval = setInterval(() => {
-            if (!isNavigationReady.current && navigationRef?.isReady()) {
-                checkNavigationReady();
-            }
-        }, 100);
-
-        return () => {
-            clearInterval(pollInterval);
-        };
-    }, [navigationRef]);
+        const pollInterval = setInterval(checkNavigationReady, 100);
+        return () => clearInterval(pollInterval);
+    }, [navigationRef, authReadyRef, pendingLinkRef]);
 
     return null;
 }
 
-export default function App() {
+/**
+ * AppNavigator - Contains the main navigation tree and Auth context consumption.
+ * This must be a child of AuthProvider.
+ */
+function AppNavigator() {
     const navigationRef = useNavigationContainerRef();
-
-    // ✅ Update authReadyRef when AuthContext signals readiness
     const { authReady } = useAuth();
+
+    // Hooks MUST be inside a component
+    const authReadyRef = useRef(false);
+    const pendingLinkRef = useRef(null);
+
+    // Update authReadyRef when AuthContext signals readiness
     useEffect(() => {
         if (authReady && !authReadyRef.current) {
-            console.log('[App] AuthContext is now READY');
+            console.log('[AppNavigator] AuthContext is now READY');
             authReadyRef.current = true;
             
             // Process any pending deep links now that auth is ready
             if (navigationRef?.isReady() && pendingLinkRef.current) {
-                console.log('[App] Processing pending deep link after auth ready');
                 const { resetToken } = pendingLinkRef.current;
                 navigationRef.navigate('ResetPassword', { resetToken });
                 pendingLinkRef.current = null;
             }
         }
-    }, [authReady]);
+    }, [authReady, navigationRef]);
 
-    // CRITICAL: AuthProvider MUST wrap NavigationContainer to ensure
-    // all screens (including LoginScreen) have access to auth methods
     return (
-        <AuthProvider>
-            <NavigationContainer
+        <NavigationContainer
             ref={navigationRef}
             linking={{
                 prefixes: [DEEP_LINK_PREFIX],
                 config: {
                     screens: {
                         ResetPassword: {
-                    path: 'reset-password',
-                    parse: (path) => {
-                        console.log('[Linking Config] Parsing path:', path);
-                        // Return empty params - token comes from URL query string handled by NavigationHandler
-                        return {};
-                    },
-                },
+                            path: 'reset-password',
+                            parse: () => ({}),
+                        },
                     },
                 },
             }}
-            onReady={() => {
-                console.log('Navigation ready');
+            onReady={() => console.log('Navigation ready')}
+            onStateChange={(state) => {
+                // Useful for debugging navigation issues
+                console.log('[Navigation] State changed');
             }}
-            >
+            fallback={<SplashScreen navigation={null} />}
+        >
             <Stack.Navigator
                 initialRouteName="Splash"
                 screenOptions={{
                     headerShown: false,
-                    cardStyleInterpolator: ({ current }) => ({
-                        cardStyle: {
-                            opacity: current.progress,
-                        },
-                    }),
+                    cardStyleInterpolator: ({ current, next, layouts }) => {
+                        return {
+                            cardStyle: {
+                                transform: [
+                                    {
+                                        translateX: current.progress.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [layouts.screen.width, 0],
+                                        }),
+                                    },
+                                    {
+                                        scale: current.progress.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [0.95, 1],
+                                        }),
+                                    },
+                                ],
+                                opacity: current.progress.interpolate({
+                                    inputRange: [0, 0.5, 1],
+                                    outputRange: [0, 0, 1],
+                                }),
+                            },
+                            overlayStyle: {
+                                opacity: current.progress.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0, 0.5],
+                                }),
+                            },
+                        };
+                    },
+                    transitionSpec: {
+                        open: { animation: 'spring', config: { stiffness: 1000, damping: 500, mass: 3, overshootClamping: true, restDisplacementThreshold: 0.01, restSpeedThreshold: 0.01 } },
+                        close: { animation: 'spring', config: { stiffness: 1000, damping: 500, mass: 3, overshootClamping: true, restDisplacementThreshold: 0.01, restSpeedThreshold: 0.01 } },
+                    },
                 }}
             >
                 <Stack.Screen name="Splash" component={SplashScreen} />
@@ -222,8 +210,23 @@ export default function App() {
                 <Stack.Screen name="Result" component={ResultScreen} />
                 <Stack.Screen name="Recommendations" component={RecommendationsScreen} />
             </Stack.Navigator>
-            <NavigationHandler navigationRef={navigationRef} />
+            <NavigationHandler
+                navigationRef={navigationRef}
+                authReadyRef={authReadyRef}
+                pendingLinkRef={pendingLinkRef}
+            />
         </NavigationContainer>
+    );
+}
+
+/**
+ * Root App Component
+ * Provides Global Contexts and renders the main navigator.
+ */
+export default function App() {
+    return (
+        <AuthProvider>
+            <AppNavigator />
         </AuthProvider>
     );
 }

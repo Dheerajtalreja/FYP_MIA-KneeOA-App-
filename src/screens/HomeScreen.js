@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { fetchReports } from '../services/api';
 import { getDatabase, getUser } from '../services/database';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -87,6 +88,7 @@ const safeParseJson = (value) => {
 };
 
 const HomeScreen = ({ navigation }) => {
+    const { logout } = useAuth();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
     const cardAnims = FEATURES.map(() => useRef(new Animated.Value(0)).current);
@@ -208,8 +210,19 @@ const HomeScreen = ({ navigation }) => {
         return unsubscribe;
     }, [cardAnims, fadeAnim, loadDashboardData, navigation, slideAnim]);
 
-    const handleLogout = () => {
-        navigation.replace('Login');
+    const handleLogout = async () => {
+        try {
+            if (typeof logout === 'function') {
+                await logout();
+            }
+            navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+            });
+        } catch (error) {
+            console.error('[HomeScreen] Logout failed:', error);
+            navigation.replace('Login');
+        }
     };
 
     return (
