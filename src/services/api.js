@@ -107,7 +107,11 @@ const handleResponse = async (response) => {
     if (!response.ok) {
         const error = await parseResponseBody(response).catch(() => ({}));
         const message = extractErrorMessage(error);
-        throw new Error(message || `HTTP ${response.status}: Request failed`);
+        // Store status code on error object for downstream handling
+        const errorObj = new Error(message || `HTTP ${response.status}: Request failed`);
+        errorObj.status = response.status;
+        errorObj.response = error;
+        throw errorObj;
     }
     return parseResponseBody(response);
 };
@@ -224,8 +228,15 @@ export const fetchCompleteUserProfile = async () => {
         try {
             questionnaire = await authFetch('/api/v1/user/questionnaire');
         } catch (e) {
-            console.warn('[Fetch-and-Sync] Failed to fetch questionnaire:', e.message);
-            throw e;
+            // 404 is expected for new users with no questionnaire data
+            // Check both error.status (from handleResponse) and e.message for backward compatibility
+            if (e.status === 404 || e?.message?.includes('404')) {
+                console.log('[Fetch-and-Sync] No questionnaire found (new user), setting to null');
+                questionnaire = null;
+            } else {
+                console.warn('[Fetch-and-Sync] Failed to fetch questionnaire:', e.message);
+                throw e;
+            }
         }
 
         // Fetch user's scan history
@@ -233,8 +244,14 @@ export const fetchCompleteUserProfile = async () => {
         try {
             scanHistory = await authFetch('/api/v1/user/scans');
         } catch (e) {
-            console.warn('[Fetch-and-Sync] Failed to fetch scan history:', e.message);
-            throw e;
+            // 404 is expected for new users with no scan history
+            if (e.status === 404 || e?.message?.includes('404')) {
+                console.log('[Fetch-and-Sync] No scan history found (new user), setting to empty array');
+                scanHistory = [];
+            } else {
+                console.warn('[Fetch-and-Sync] Failed to fetch scan history:', e.message);
+                throw e;
+            }
         }
 
         // Fetch user's recommendations
@@ -242,8 +259,14 @@ export const fetchCompleteUserProfile = async () => {
         try {
             recommendations = await authFetch('/api/v1/user/recommendations');
         } catch (e) {
-            console.warn('[Fetch-and-Sync] Failed to fetch recommendations:', e.message);
-            throw e;
+            // 404 is expected for new users with no recommendations
+            if (e.status === 404 || e?.message?.includes('404')) {
+                console.log('[Fetch-and-Sync] No recommendations found (new user), setting to empty array');
+                recommendations = [];
+            } else {
+                console.warn('[Fetch-and-Sync] Failed to fetch recommendations:', e.message);
+                throw e;
+            }
         }
 
         const completeProfile = {

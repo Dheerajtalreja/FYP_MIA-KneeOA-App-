@@ -4,7 +4,7 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { createStackNavigator } from '@react-navigation/stack';
 import * as Linking from 'expo-linking';
 
-import { AuthProvider } from './src/contexts/AuthContext';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -22,38 +22,65 @@ const Stack = createStackNavigator();
 
 const DEEP_LINK_PREFIX = 'https://kneeoa.online/';
 
+// ✅ Shared refs for auth readiness and pending links - accessible by both App and NavigationHandler
+const authReadyRef = useRef(false);
+const pendingLinkRef = useRef(null);
+
 function NavigationHandler({ navigationRef }) {
     const hasHandledInitialLink = useRef(false);
-    const pendingLink = useRef(null);
+    const pendingLink = pendingLinkRef;  // ✅ Use shared ref
     const isNavigationReady = useRef(false);
 
     useEffect(() => {
         const handleDeepLink = async (url) => {
             try {
-                const parsedUrl = Linking.parse(url);
-                const path = parsedUrl.path || '';
+                console.log('[DeepLink] Received URL:', url);
 
-                console.log('[DeepLink] Parsed URL:', url);
+                // CRITICAL FIX: Use URL API for robust query parameter extraction
+                // This properly handles URL-encoded JWT tokens with +, %, etc.
+                let parsedUrl;
+                try {
+                    parsedUrl = new URL(url.replace('https://kneeoa.online', 'https://example.com'));
+                } catch (e) {
+                    console.error('[DeepLink] Failed to parse URL:', url, e);
+                    return;
+                }
+
+                const path = parsedUrl.pathname;
+                const token = parsedUrl.searchParams.get('token');
+
                 console.log('[DeepLink] Path:', path);
-                console.log('[DeepLink] Query params:', parsedUrl.queryParams);
+                console.log('[DeepLink] Token length:', token?.length);
+                console.log('[DeepLink] Token starts with:', token?.substring(0, 30) + '...');
+                console.log('[DeepLink] Full token (first 100 chars):', token?.substring(0, 100));
 
                 if (path.startsWith('/reset-password')) {
-                    const token = parsedUrl.queryParams?.token;
-
-                    if (!token) {
+                    if (!token || token.length === 0) {
                         console.error('[DeepLink] No token found in URL');
+                        console.error('[DeepLink] All query params:', Array.from(parsedUrl.searchParams.entries()));
                         return;
                     }
 
-                    console.log('[DeepLink] Token extracted:', token);
+                    // Validate token format (JWT has 3 parts separated by dots)
+                    const parts = token.split('.');
+                    if (parts.length !== 3) {
+                        console.error('[DeepLink] Invalid token format - expected JWT with 3 parts');
+                        console.error('[DeepLink] Got parts:', parts.length);
+                        return;
+                    }
 
-                    // CRITICAL FIX: Only navigate if navigation is confirmed ready
-                    if (navigationRef?.isReady()) {
-                        console.log('[DeepLink] Navigation ready, routing to ResetPassword');
+                    console.log('[DeepLink] Token validated as JWT format');
+
+                    // CRITICAL FIX: Wait for BOTH navigation AND auth to be ready
+                    if (navigationRef?.isReady() && authReadyRef.current) {
+                        console.log('[DeepLink] Navigation AND auth ready, routing to ResetPassword');
                         navigationRef.navigate('ResetPassword', { resetToken: token });
                         hasHandledInitialLink.current = true;
                         pendingLink.current = null;
                     } else {
+                        const navReady = navigationRef?.isReady();
+                        const authReady = authReadyRef.current;
+                        console.log('[DeepLink] Navigation ready:', navReady, 'Auth ready:', authReady);
                         console.log('[DeepLink] Navigation NOT ready, QUEUING link for later');
                         // Store the link for later processing
                         pendingLink.current = { resetToken: token, timestamp: Date.now() };
@@ -84,16 +111,16 @@ function NavigationHandler({ navigationRef }) {
         };
     }, [navigationRef]);
 
-    // CRITICAL FIX: Monitor navigation readiness and process pending links
+    // CRITICAL FIX: Monitor navigation readiness AND auth readiness, process pending links
     useEffect(() => {
         const checkNavigationReady = () => {
             if (navigationRef?.isReady()) {
                 console.log('[DeepLink] Navigation container is now READY');
                 isNavigationReady.current = true;
 
-                // Process any pending links
-                if (pendingLink.current) {
-                    console.log('[DeepLink] Processing queued deep link');
+                // Process any pending links (only if auth is also ready)
+                if (pendingLink.current && authReadyRef.current) {
+                    console.log('[DeepLink] Processing queued deep link (nav + auth ready)');
                     const { resetToken } = pendingLink.current;
                     
                     // Double-check before navigating
@@ -102,6 +129,8 @@ function NavigationHandler({ navigationRef }) {
                         pendingLink.current = null;
                         hasHandledInitialLink.current = true;
                     }
+                } else if (pendingLink.current && !authReadyRef.current) {
+                    console.log('[DeepLink] Waiting for auth to be ready before processing queued link');
                 }
             }
         };
@@ -127,6 +156,23 @@ function NavigationHandler({ navigationRef }) {
 export default function App() {
     const navigationRef = useNavigationContainerRef();
 
+    // ✅ Update authReadyRef when AuthContext signals readiness
+    const { authReady } = useAuth();
+    useEffect(() => {
+        if (authReady && !authReadyRef.current) {
+            console.log('[App] AuthContext is now READY');
+            authReadyRef.current = true;
+            
+            // Process any pending deep links now that auth is ready
+            if (navigationRef?.isReady() && pendingLinkRef.current) {
+                console.log('[App] Processing pending deep link after auth ready');
+                const { resetToken } = pendingLinkRef.current;
+                navigationRef.navigate('ResetPassword', { resetToken });
+                pendingLinkRef.current = null;
+            }
+        }
+    }, [authReady]);
+
     // CRITICAL: AuthProvider MUST wrap NavigationContainer to ensure
     // all screens (including LoginScreen) have access to auth methods
     return (
@@ -137,14 +183,21 @@ export default function App() {
                 prefixes: [DEEP_LINK_PREFIX],
                 config: {
                     screens: {
-                        ResetPassword: 'reset-password',
+                        ResetPassword: {
+                    path: 'reset-password',
+                    parse: (path) => {
+                        console.log('[Linking Config] Parsing path:', path);
+                        // Return empty params - token comes from URL query string handled by NavigationHandler
+                        return {};
+                    },
+                },
                     },
                 },
             }}
             onReady={() => {
                 console.log('Navigation ready');
             }}
-        >
+            >
             <Stack.Navigator
                 initialRouteName="Splash"
                 screenOptions={{

@@ -117,6 +117,14 @@ const QuestionnaireScreen = ({ navigation }) => {
             });
         } catch (error) {
             console.error('Failed to save questionnaire:', error);
+            Alert.alert(
+                'Save Failed',
+                'We could not save your responses. Please check your connection and try again.',
+                [
+                    { text: 'Try Again', onPress: () => setLoading(false) },
+                    { text: 'Cancel', style: 'cancel' },
+                ]
+            );
         } finally {
             setLoading(false);
         }

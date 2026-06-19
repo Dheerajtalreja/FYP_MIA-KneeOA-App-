@@ -17,7 +17,28 @@ import { COLORS, SHADOWS, SIZES } from '../config/theme';
 import { resetPassword } from '../services/api';
 
 const ResetPasswordScreen = ({ navigation, route }) => {
-    const resetToken = route?.params?.resetToken || null;
+    // CRITICAL FIX: Robust token extraction with URL decoding
+    let resetToken = route?.params?.resetToken || null;
+    
+    // Handle case where token might be URL-encoded or in different format
+    if (!resetToken && route?.params?.token) {
+        console.log('[ResetPasswordScreen] Found token in route.params.token, using that');
+        resetToken = route.params.token;
+    }
+    
+    // Attempt URL decoding if token exists (handles + signs, %20, etc.)
+    if (resetToken) {
+        try {
+            const decoded = decodeURIComponent(resetToken);
+            if (decoded !== resetToken) {
+                console.log('[ResetPasswordScreen] Token was URL-encoded, using decoded version');
+                resetToken = decoded;
+            }
+        } catch (e) {
+            console.log('[ResetPasswordScreen] Token appears to be already decoded or invalid encoding');
+        }
+    }
+    
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -32,7 +53,10 @@ const ResetPasswordScreen = ({ navigation, route }) => {
 
     useEffect(() => {
         console.log('[ResetPasswordScreen] Component mounted');
-        console.log('[ResetPasswordScreen] Reset token:', resetToken);
+        console.log('[ResetPasswordScreen] Raw route.params:', route?.params);
+        console.log('[ResetPasswordScreen] Extracted resetToken:', resetToken);
+        console.log('[ResetPasswordScreen] Token length:', resetToken?.length);
+        console.log('[ResetPasswordScreen] Token starts with:', resetToken?.substring(0, 30) + '...');
 
         if (!resetToken) {
             console.warn('[ResetPasswordScreen] No reset token provided');
@@ -103,7 +127,28 @@ const ResetPasswordScreen = ({ navigation, route }) => {
             );
         } catch (error) {
             console.error('[ResetPasswordScreen] Error:', error);
-            const errorMessage = error?.message || 'Failed to reset password. Please try again.';
+            console.error('[ResetPasswordScreen] Error details:');
+            console.error('[ResetPasswordScreen] - error.message:', error?.message);
+            console.error('[ResetPasswordScreen] - error.response:', error?.response);
+            console.error('[ResetPasswordScreen] - error.response?.data:', error?.response?.data);
+            
+            // Extract specific backend error message
+            let errorMessage = 'Failed to reset password. Please try again.';
+            
+            if (error?.response?.data?.detail) {
+                errorMessage = error.response.data.detail;
+                console.log('[ResetPasswordScreen] Backend error detail:', errorMessage);
+            } else if (error?.response?.data?.message) {
+                errorMessage = error.response.data.message;
+                console.log('[ResetPasswordScreen] Backend error message:', errorMessage);
+            } else if (error?.response?.data?.error) {
+                errorMessage = error.response.data.error;
+                console.log('[ResetPasswordScreen] Backend error:', errorMessage);
+            } else if (error?.message) {
+                errorMessage = error.message;
+                console.log('[ResetPasswordScreen] Error message:', errorMessage);
+            }
+            
             Alert.alert('Error', errorMessage);
         } finally {
             setLoading(false);

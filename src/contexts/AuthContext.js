@@ -14,6 +14,7 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [authReady, setAuthReady] = useState(false);  // ✅ Signal when auth state is loaded
     const [user, setUser] = useState(null);
     const [accessToken, setAccessToken] = useState(null);
     const [refreshToken, setRefreshToken] = useState(null);
@@ -39,6 +40,7 @@ export const AuthProvider = ({ children }) => {
                 console.error('[AuthContext] Failed to load auth state:', error);
             } finally {
                 setIsLoading(false);
+                setAuthReady(true);  // ✅ Signal that auth state loading is complete
             }
         };
 
@@ -137,6 +139,7 @@ export const AuthProvider = ({ children }) => {
     const value = {
         isAuthenticated,
         isLoading,
+        authReady,  // ✅ Expose auth readiness to consumers
         user,
         accessToken,
         refreshToken,

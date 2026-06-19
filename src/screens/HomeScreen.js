@@ -105,12 +105,10 @@ const HomeScreen = ({ navigation }) => {
                 database.getAllAsync(
                     'SELECT * FROM scan_history WHERE user_id = ? ORDER BY scanned_at DESC',
                     [userKey]
-                ),
-                fetchReports().catch(() => []),
-            ]);
-
-            const scanCount = Array.isArray(scanRows) ? scanRows.length : 0;
-            const reportCount = Array.isArray(reports) ? reports.length : 0;
+            ).catch((err) => {
+                console.error('[HomeScreen] Database query failed:', err);
+                return [];  // Return empty array on error
+            }),
             const normalizedScanRows = Array.isArray(scanRows) ? scanRows : [];
 
             const confidenceValues = normalizedScanRows

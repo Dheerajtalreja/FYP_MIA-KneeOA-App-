@@ -172,7 +172,7 @@ const mapErrorResponse = async (response) => {
 
     if (response.status === 401) {
         clearAuthTokens();
-        const error = new UnauthorizedError();
+        const error = new UnauthorizedError(null, { status: 401 });
         if (sessionExpiredHandler) {
             sessionExpiredHandler(error);
         }
@@ -180,16 +180,17 @@ const mapErrorResponse = async (response) => {
     }
 
     if (response.status === 403) {
-        return new ForbiddenError();
+        return new ForbiddenError(null, { status: 403 });
     }
 
     if (response.status === 404) {
-        return new NotFoundError();
+        return new NotFoundError(null, { status: 404 });
     }
 
     if (response.status === 422) {
         const detail = Array.isArray(payload?.detail) ? payload.detail : [];
         return new ValidationError(genericMessageForStatus(422), {
+            status: 422,
             details: detail,
             fieldErrors: buildFieldErrors(detail),
             raw: payload,
