@@ -1,8 +1,68 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, Component } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { View, Text, StyleSheet } from 'react-native';
 import * as Linking from 'expo-linking';
+import { URL as PolyfillURL } from 'react-native-url-polyfill';
+
+// Ensure URL is available globally for environments that lack it
+if (typeof global.URL === 'undefined') {
+    global.URL = PolyfillURL;
+}
+
+/**
+ * Global Error Boundary - Catches any unhandled errors during rendering
+ * and displays a fallback UI instead of crashing the entire app.
+ */
+class ErrorBoundary extends Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error('[ErrorBoundary] Caught error:', error);
+        console.error('[ErrorBoundary] Error info:', errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>Something went wrong.</Text>
+                    <Text style={styles.errorSubtext}>Please restart the app.</Text>
+                </View>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+const styles = StyleSheet.create({
+    errorContainer: {
+        flex: 1,
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    errorText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#ff0000',
+        marginBottom: 10,
+    },
+    errorSubtext: {
+        fontSize: 14,
+        color: '#666',
+    },
+});
 
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import SplashScreen from './src/screens/SplashScreen';
@@ -155,7 +215,6 @@ function AppNavigator() {
                 // Useful for debugging navigation issues
                 console.log('[Navigation] State changed');
             }}
-            fallback={<SplashScreen navigation={null} />}
         >
             <Stack.Navigator
                 initialRouteName="Splash"
@@ -225,8 +284,10 @@ function AppNavigator() {
  */
 export default function App() {
     return (
-        <AuthProvider>
-            <AppNavigator />
-        </AuthProvider>
+        <ErrorBoundary>
+            <AuthProvider>
+                <AppNavigator />
+            </AuthProvider>
+        </ErrorBoundary>
     );
 }

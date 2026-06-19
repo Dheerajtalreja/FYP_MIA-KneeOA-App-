@@ -104,8 +104,24 @@ const SplashScreen = ({ navigation }) => {
 
         // Navigate to the authenticated route after bootstrapping the persisted session.
         const timer = setTimeout(() => {
-            hydrateAuthState()
-                .then(async ({ accessToken }) => {
+            // CRITICAL: Check if navigation is ready before calling any navigation methods
+            if (!navigation || typeof navigation.isReady !== 'function' || !navigation.isReady()) {
+                console.warn('[Splash] Navigation not ready, attempting delayed navigation');
+                // Try again after a short delay
+                const retryTimer = setTimeout(() => {
+                    if (!active) return;
+                    performNavigationTransition();
+                }, 1000);
+                return () => clearTimeout(retryTimer);
+            }
+
+            performNavigationTransition();
+
+            async function performNavigationTransition() {
+                try {
+                    const authState = await hydrateAuthState();
+                    const accessToken = authState?.accessToken || null;
+
                     if (!active) return;
 
                     if (accessToken) {
@@ -116,24 +132,34 @@ const SplashScreen = ({ navigation }) => {
                             if (userKey) {
                                 const questionnaire = await getLatestQuestionnaire(userKey);
                                 if (questionnaire) {
-                                    navigation.replace('Home');
+                                    if (active && navigation?.isReady()) {
+                                        navigation.replace('Home');
+                                    }
                                     return;
                                 }
                             }
-                            navigation.replace('Questionnaire');
-                        } catch (err) {
-                            console.warn('[Splash] Failed to check state, defaulting to Home:', err);
-                            navigation.replace('Home');
+                            if (active && navigation?.isReady()) {
+                                navigation.replace('Questionnaire');
+                            }
+                        } catch (dbError) {
+                            console.warn('[Splash] Failed to check state, defaulting to Home:', dbError);
+                            if (active && navigation?.isReady()) {
+                                navigation.replace('Home');
+                            }
                         }
                     } else {
+                        if (active && navigation?.isReady()) {
+                            navigation.replace('Login');
+                        }
+                    }
+                } catch (hydrationError) {
+                    if (!active) return;
+                    console.error('[Splash] Auth hydration failed:', hydrationError);
+                    if (active && navigation?.isReady()) {
                         navigation.replace('Login');
                     }
-                })
-                .catch((err) => {
-                    if (!active) return;
-                    console.error('[Splash] Auth hydration failed:', err);
-                    navigation.replace('Login');
-                });
+                }
+            }
         }, 3000);
 
         return () => {

@@ -63,14 +63,28 @@ const ensureAuthStateLoaded = async () => {
 
     if (!authStateLoadingPromise) {
         authStateLoadingPromise = (async () => {
-            const stored = await loadStoredAuthState();
-            authToken = stored.accessToken || null;
-            refreshToken = stored.refreshToken || null;
-            authStateLoaded = true;
-            return { accessToken: authToken, refreshToken };
-        })().finally(() => {
-            authStateLoadingPromise = null;
-        });
+            try {
+                // Defensive: Ensure loadStoredAuthState is available
+                if (typeof loadStoredAuthState !== 'function') {
+                    throw new Error('loadStoredAuthState is not a function');
+                }
+
+                const stored = await loadStoredAuthState();
+                authToken = stored.accessToken || null;
+                refreshToken = stored.refreshToken || null;
+                authStateLoaded = true;
+                return { accessToken: authToken, refreshToken };
+            } catch (error) {
+                console.error('[apiCore] Failed to load auth state:', error);
+                // Return safe defaults instead of throwing
+                authToken = null;
+                refreshToken = null;
+                authStateLoaded = true;
+                return { accessToken: null, refreshToken: null };
+            } finally {
+                authStateLoadingPromise = null;
+            }
+        })();
     }
 
     return authStateLoadingPromise;
@@ -234,19 +248,20 @@ const onRefreshed = (token) => {
     refreshSubscribers = [];
 };
 
-const handleResponse = async (response, originalRequest) => {
+const handleResponse = async (response, originalOptions) => {
     if (!response.ok) {
-        if (response.status === 401 && !originalRequest._retry) {
+        if (response.status === 401 && !originalOptions._retry) {
             if (isRefreshing) {
                 return new Promise(resolve => {
                     subscribeTokenRefresh(token => {
-                        originalRequest.headers.set('Authorization', `Bearer ${token}`);
-                        resolve(fetch(originalRequest));
+                        const nextHeaders = new Headers(originalOptions.headers);
+                        nextHeaders.set('Authorization', `Bearer ${token}`);
+                        resolve(fetch(originalOptions.url, { ...originalOptions, headers: nextHeaders }));
                     });
-                }).then(res => handleResponse(res, originalRequest));
+                }).then(res => handleResponse(res, originalOptions));
             }
 
-            originalRequest._retry = true;
+            originalOptions._retry = true;
             isRefreshing = true;
 
             try {
@@ -255,8 +270,9 @@ const handleResponse = async (response, originalRequest) => {
                 isRefreshing = false;
                 if (newToken) {
                     onRefreshed(newToken);
-                    originalRequest.headers.set('Authorization', `Bearer ${newToken}`);
-                    return handleResponse(await fetch(originalRequest), originalRequest);
+                    const nextHeaders = new Headers(originalOptions.headers);
+                    nextHeaders.set('Authorization', `Bearer ${newToken}`);
+                    return handleResponse(await fetch(originalOptions.url, { ...originalOptions, headers: nextHeaders }), originalOptions);
                 }
             } catch (refreshError) {
                 isRefreshing = false;
@@ -326,14 +342,13 @@ const request = async (path, options = {}, { auth = false, timeout = 15000 } = {
 
     try {
         const url = buildApiUrl(normalizePath(path));
-        const originalRequest = new Request(url, {
+        const response = await fetch(url, {
             ...options,
             headers: nextHeaders,
             signal: controller.signal,
         });
 
-        const response = await fetch(originalRequest);
-        return await handleResponse(response, originalRequest);
+        return await handleResponse(response, { ...options, headers: nextHeaders, url });
     } catch (error) {
         if (error.name === 'AbortError') {
             throw new ApiError('Request timed out. Please check your internet connection.', { status: 408, code: 'timeout' });

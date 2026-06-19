@@ -24,40 +24,51 @@ export const AuthProvider = ({ children }) => {
         const loadAuthState = async () => {
             try {
                 console.log('[AuthContext] Loading stored auth state...');
+                
+                // Defensive: Ensure loadStoredAuthState is a function
+                if (typeof loadStoredAuthState !== 'function') {
+                    throw new Error('loadStoredAuthState is not a function');
+                }
+
                 const state = await loadStoredAuthState();
                 
                 if (state?.accessToken) {
                     // Update API client first
-                    setAuthToken(state.accessToken);
-                    if (state.refreshToken) apiSetRefreshToken(state.refreshToken);
+                    if (typeof setAuthToken === 'function') setAuthToken(state.accessToken);
+                    if (typeof apiSetRefreshToken === 'function' && state.refreshToken) apiSetRefreshToken(state.refreshToken);
 
-                    setAccessToken(state.accessToken);
-                    setRefreshToken(state.refreshToken || null);
+                    if (typeof setAccessToken === 'function') setAccessToken(state.accessToken);
+                    if (typeof setRefreshToken === 'function') setRefreshToken(state.refreshToken || null);
 
                     // Try to load actual user info from local DB
                     try {
-                        const localUser = await getUser();
-                        if (localUser) {
-                            setUser(localUser);
-                            setIsAuthenticated(true);
-                            console.log('[AuthContext] Restored user from local DB');
+                        // Defensive: Check if getUser is available
+                        if (typeof getUser === 'function') {
+                            const localUser = await getUser();
+                            if (localUser) {
+                                if (typeof setUser === 'function') setUser(localUser);
+                                if (typeof setIsAuthenticated === 'function') setIsAuthenticated(true);
+                                console.log('[AuthContext] Restored user from local DB');
+                            } else {
+                                // If tokens exist but no DB record, we're in an inconsistent state
+                                // We'll mark as authenticated but with minimal info
+                                if (typeof setUser === 'function') setUser({ email: 'restored_user' });
+                                if (typeof setIsAuthenticated === 'function') setIsAuthenticated(true);
+                                console.log('[AuthContext] Tokens found but no local user record');
+                            }
                         } else {
-                            // If tokens exist but no DB record, we're in an inconsistent state
-                            // We'll mark as authenticated but with minimal info
-                            setUser({ email: 'restored_user' });
-                            setIsAuthenticated(true);
-                            console.log('[AuthContext] Tokens found but no local user record');
+                            throw new Error('getUser function not available');
                         }
                     } catch (dbError) {
                         console.warn('[AuthContext] Failed to load local user during init:', dbError);
-                        setIsAuthenticated(true);
+                        if (typeof setIsAuthenticated === 'function') setIsAuthenticated(true);
                     }
                 }
             } catch (error) {
                 console.error('[AuthContext] Failed to load auth state:', error);
             } finally {
-                setIsLoading(false);
-                setAuthReady(true);
+                if (typeof setIsLoading === 'function') setIsLoading(false);
+                if (typeof setAuthReady === 'function') setAuthReady(true);
             }
         };
 

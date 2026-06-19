@@ -1,5 +1,22 @@
 {
   "expo": {
+    "name": "KneeOA Engine",
+    "slug": "kneeoaapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1923"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
     "extra": {
       "eas": {
         "projectId": "31142275-1fbd-4a25-b8ef-9518182f366c"
