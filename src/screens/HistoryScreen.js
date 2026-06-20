@@ -129,7 +129,7 @@ const HistoryScreen = ({ navigation }) => {
 
     useEffect(() => {
         loadHistory();
-    }, [loadHistory]);
+    }, []);
 
     const selectedPatient = useMemo(
         () =>
@@ -173,7 +173,13 @@ const HistoryScreen = ({ navigation }) => {
                 <View style={styles.decorCircleOne} />
                 <View style={styles.decorCircleTwo} />
                 <View style={styles.headerRow}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                    <TouchableOpacity onPress={() => {
+                        if (navigation.canGoBack()) {
+                            navigation.goBack();
+                        } else {
+                            navigation.replace('Home');
+                        }
+                    }} style={styles.backButton}>
                         <Text style={styles.backButtonText}>←</Text>
                     </TouchableOpacity>
                     <View style={styles.headerTextBlock}>

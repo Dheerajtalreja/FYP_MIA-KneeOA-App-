@@ -121,7 +121,7 @@ function NavigationHandler({ navigationRef, authReadyRef, pendingLinkRef }) {
 
                     // Wait for BOTH navigation AND auth to be ready
                     if (navigationRef?.isReady() && authReadyRef.current) {
-                        console.log('[DeepLink] Routing to ResetPassword');
+                        console.log('[DeepLink] Routing to ResetPassword with token');
                         navigationRef.navigate('ResetPassword', { resetToken: token });
                         pendingLinkRef.current = null;
                     } else {
@@ -200,17 +200,10 @@ function AppNavigator() {
         <NavigationContainer
             ref={navigationRef}
             linking={{
-                prefixes: [DEEP_LINK_PREFIX],
+                prefixes: ['kneeoa://', DEEP_LINK_PREFIX, 'https://www.kneeoa.online'],
                 config: {
                     screens: {
-                        ResetPassword: {
-                            path: 'reset-password',
-                            parse: {
-                                // parse must be an object mapping param names to functions
-                                // Since we don't use URL params, return empty object
-                                token: (token) => token,
-                            },
-                        },
+                        ResetPassword: 'reset-password',
                     },
                 },
             }}

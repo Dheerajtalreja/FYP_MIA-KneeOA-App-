@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { setAuthToken, setRefreshToken as apiSetRefreshToken, clearAuthTokens, loginUser } from '../services/api';
 import { loadStoredAuthState, persistStoredAuthState, clearStoredAuthState } from '../services/tokenStore';
+import { getUser, getLatestQuestionnaire } from '../services/database'; // ✅ FIXED: Added missing database import
 
 // Create the AuthContext
 const AuthContext = createContext(null);
@@ -107,7 +108,7 @@ export const AuthProvider = ({ children }) => {
             
             // Update API client
             setAuthToken(token);
-            if (refresh) apiSetRefreshToken(refresh); // FIXED: Use aliased function
+            if (refresh) apiSetRefreshToken(refresh);
 
             console.log('[AuthContext] Login successful');
             return { success: true, token, user: authResponse?.data || authResponse };
@@ -156,10 +157,34 @@ export const AuthProvider = ({ children }) => {
             setRefreshToken(newRefreshToken || null);
             await persistStoredAuthState({ accessToken: newToken, refreshToken: newRefreshToken });
             setAuthToken(newToken);
-            if (newRefreshToken) apiSetRefreshToken(newRefreshToken); // FIXED: Use aliased function
+            if (newRefreshToken) apiSetRefreshToken(newRefreshToken);
         } catch (error) {
             console.error('[AuthContext] Failed to update token:', error);
             throw error;
+        }
+    }, []);
+
+    /**
+     * Check if user has completed their medical profile questionnaire
+     * @param {string} userId - The user's server_id, email, or id
+     * @returns {Promise<Object|null>} - The questionnaire response or null if not completed
+     */
+    const checkProfileCompletion = useCallback(async (userId) => {
+        try {
+            if (!userId) {
+                console.warn('[AuthContext] No userId provided for profile check');
+                return null;
+            }
+
+            if (typeof getLatestQuestionnaire !== 'function') {
+                throw new Error('getLatestQuestionnaire function not available');
+            }
+
+            const questionnaire = await getLatestQuestionnaire(userId);
+            return questionnaire || null;
+        } catch (error) {
+            console.error('[AuthContext] Failed to check profile completion:', error);
+            return null;
         }
     }, []);
 
@@ -174,6 +199,7 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         updateToken,
+        checkProfileCompletion,  // ✅ Add profile check function
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

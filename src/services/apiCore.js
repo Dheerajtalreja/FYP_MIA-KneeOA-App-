@@ -672,16 +672,6 @@ export const fetchPatientHistory = async (patientId) => {
     return request(`/api/v1/profile/patients/${pathId}/history`, {}, { auth: true });
 };
 
-export const updateProfile = async (profileData) => {
-    const payload = buildProfileUpdatePayload(profileData);
-    return request('/api/v1/profile/me', {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-    }, {
-        auth: true,
-    });
-};
-
 export const fetchVideoLibrary = async (klGrade = null, category = null) => {
     const params = new URLSearchParams();
 
@@ -735,34 +725,31 @@ export const refreshAuthToken = async () => {
 };
 
 /**
- * Fetch-and-Sync Pattern: Get fresh user data from backend.
- * This is the 'Source of Truth' that should be called on login.
+ * Fetches the user profile and syncs it with local storage/database.
+ * Note: Questionnaire data is now part of the profile object.
  */
 export const fetchCompleteUserProfile = async () => {
     try {
         console.log('[Fetch-and-Sync] Fetching complete user profile from backend...');
 
-        // Fetch user profile
-        const profile = await fetchProfile();
+        // Fetch user profile which now contains all questionnaire fields
+        const profile = await getProfile();
 
-        // Fetch related data in parallel with safe error handling (404 is okay for new users)
-        const [questionnaireResult, scansResult, recommendationsResult] = await Promise.allSettled([
-            authFetch('/api/v1/user/questionnaire'),
-            authFetch('/api/v1/user/scans'),
-            authFetch('/api/v1/user/recommendations')
+        // Fetch scans and recommendations only
+        const [scansResult, recommendationsResult] = await Promise.allSettled([
+            authFetch('/api/v1/diagnostic/reports'), // Changed to correct endpoint
+            authFetch('/api/v1/recommendation/')     // Ensure this is called correctly
         ]);
 
         const getResultValue = (result, defaultValue) => {
             if (result.status === 'fulfilled') return result.value;
-            // 404 means no data yet, which is normal for new accounts
-            if (result.reason?.status === 404) return defaultValue;
             console.warn(`[Fetch-and-Sync] Error fetching secondary data:`, result.reason);
             return defaultValue;
         };
 
         const completeProfile = {
             user: profile,
-            questionnaire: getResultValue(questionnaireResult, null),
+            questionnaire: profile, // ✅ Questionnaire data is now inside the profile object
             scanHistory: getResultValue(scansResult, []),
             recommendations: getResultValue(recommendationsResult, []),
             fetchedAt: new Date().toISOString(),
@@ -774,6 +761,24 @@ export const fetchCompleteUserProfile = async () => {
         console.error('[Fetch-and-Sync] Failed to fetch complete profile:', error);
         throw error;
     }
+};
+
+/**
+ * Get current user profile from backend
+ */
+export const getProfile = async () => {
+    return request('/api/v1/profile/me', {}, { auth: true });
+};
+
+/**
+ * Update current user profile
+ * @param {Object} profileData - Profile update data matching ProfileUpdate schema
+ */
+export const updateProfile = async (profileData) => {
+    return request('/api/v1/profile/me', {
+        method: 'PUT',
+        body: JSON.stringify(profileData),
+    }, { auth: true });
 };
 
 export const isOnline = async () => {

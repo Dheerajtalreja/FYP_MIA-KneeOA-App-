@@ -8,6 +8,7 @@ import {
     Animated,
     Dimensions,
     ScrollView,
+    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fetchReports } from '../services/api';
@@ -91,7 +92,9 @@ const HomeScreen = ({ navigation }) => {
     const { logout } = useAuth();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
-    const cardAnims = FEATURES.map(() => useRef(new Animated.Value(0)).current);
+    // CRITICAL FIX: Wrap cardAnims in useRef to prevent infinite loop
+    // The array reference must never change, only the values inside
+    const cardAnims = useRef(FEATURES.map(() => new Animated.Value(0))).current;
     const [stats, setStats] = useState(DEFAULT_STATS);
     const [activities, setActivities] = useState([]);
     const [userName, setUserName] = useState('Dr. User');
@@ -208,19 +211,37 @@ const HomeScreen = ({ navigation }) => {
         loadDashboardData();
         const unsubscribe = navigation.addListener('focus', loadDashboardData);
         return unsubscribe;
-    }, [cardAnims, fadeAnim, loadDashboardData, navigation, slideAnim]);
+    }, [loadDashboardData, navigation]); // Removed animation refs - they don't need to trigger re-runs
 
     const handleLogout = async () => {
         try {
-            if (typeof logout === 'function') {
-                await logout();
-            }
-            navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-            });
+            // Show confirmation dialog
+            Alert.alert(
+                'Log Out',
+                'Are you sure you want to log out of your account?',
+                [
+                    {
+                        text: 'Cancel',
+                        style: 'cancel',
+                    },
+                    {
+                        text: 'Log Out',
+                        style: 'destructive',
+                        onPress: async () => {
+                            if (typeof logout === 'function') {
+                                await logout();
+                            }
+                            navigation.reset({
+                                index: 0,
+                                routes: [{ name: 'Login' }],
+                            });
+                        },
+                    },
+                ]
+            );
         } catch (error) {
             console.error('[HomeScreen] Logout failed:', error);
+            Alert.alert('Error', 'Failed to log out. Please try again.');
             navigation.replace('Login');
         }
     };
@@ -390,9 +411,9 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={styles.navIcon}>📊</Text>
                     <Text style={styles.navLabel}>Reports</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
-                    <Text style={styles.navIcon}>⚙️</Text>
-                    <Text style={styles.navLabel}>Settings</Text>
+                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Questionnaire', { isEditing: true })}>
+                    <Text style={styles.navIcon}>📋</Text>
+                    <Text style={styles.navLabel}>Edit Profile</Text>
                 </TouchableOpacity>
             </View>
         </View>

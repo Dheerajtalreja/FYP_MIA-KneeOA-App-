@@ -12,11 +12,12 @@ import {
     Animated,
     Dimensions,
     ScrollView,
+    KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
-import { setAuthToken, setRefreshToken, fetchCompleteUserProfile } from '../services/api';
-import { saveUser, clearLocalUserData, saveCompleteUserProfile } from '../services/database';
+import { setAuthToken, setRefreshToken } from '../services/api';
+import { saveUser, getLatestQuestionnaire } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = 220; // Fixed height taaki flicker na ho
@@ -63,6 +64,14 @@ const LoginScreen = ({ navigation }) => {
         ]).start(() => {
             hasAnimated.current = true;
         });
+
+        // CRITICAL: Cleanup animations on unmount to prevent ghost animation crashes
+        return () => {
+            // Stop any running animations
+            headerFade.stopAnimation();
+            formSlide.stopAnimation();
+            formFade.stopAnimation();
+        };
     }, []);
 
     const handleForgotPassword = () => {
@@ -106,31 +115,36 @@ const LoginScreen = ({ navigation }) => {
 
             const token = result.token;
 
-            console.log('[LoginScreen] Authentication successful, fetching complete profile...');
+            console.log('[LoginScreen] Authentication successful, checking profile...');
 
-            // Step 2: Fetch-and-Sync Pattern
-            try {
-                // Clear local data first to avoid stale data
-                await clearLocalUserData();
+            // CRITICAL: Save user to local database only (no profile sync)
+            const currentUser = result.user || {};
+            const userId = currentUser?.user_id || currentUser?.id || email.trim().toLowerCase();
+            
+            await saveUser({
+                id: currentUser?.user_id || null,
+                email: email.trim().toLowerCase(),
+                fullName: currentUser?.full_name || 'User',
+                role: 'patient',
+                profile: { authenticated: true },
+            });
 
-                // Fetch complete profile from backend (Source of Truth)
-                const completeProfile = await fetchCompleteUserProfile();
-
-                // Step 3: Save fresh server data to local database
-                await saveCompleteUserProfile({
-                    ...completeProfile,
-                    user: {
-                        ...completeProfile.user,
-                        token,
-                    },
-                });
-
-                console.log('[LoginScreen] Sync complete, navigating...');
-                navigation.replace('Home');
-            } catch (syncError) {
-                console.warn('[LoginScreen] Sync failed, proceeding with basic auth:', syncError);
-                // Even if sync fails, we have the token, so we can proceed to Home
-                // The app will try to load what it can.
+            // CRITICAL: Check if user has completed their medical profile
+            if (userId) {
+                const questionnaire = await getLatestQuestionnaire(userId);
+                
+                if (questionnaire) {
+                    // User has completed questionnaire → Go to Home
+                    console.log('[LoginScreen] Profile complete, navigating to Home');
+                    navigation.replace('Home');
+                } else {
+                    // User has NOT completed questionnaire → Force to Questionnaire
+                    console.log('[LoginScreen] Profile incomplete, forcing to Questionnaire');
+                    navigation.replace('Questionnaire');
+                }
+            } else {
+                // No user ID found, default to Home
+                console.warn('[LoginScreen] No user ID found, defaulting to Home');
                 navigation.replace('Home');
             }
 
@@ -155,6 +169,13 @@ const LoginScreen = ({ navigation }) => {
             setLoading(false);
         }
     };
+
+    // CRITICAL: Cleanup button animation on unmount
+    useEffect(() => {
+        return () => {
+            buttonScale.stopAnimation();
+        };
+    }, []);
 
     return (
         <View style={styles.container}>

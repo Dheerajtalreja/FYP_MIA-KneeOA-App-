@@ -75,17 +75,24 @@ export const getDatabase = async () => {
 
         dbPromise = (async () => {
             try {
-                // Defensive: Check if SQLite is available
                 if (!SQLite || !SQLite.openDatabaseAsync) {
                     throw new Error('expo-sqlite not properly initialized');
                 }
                 
                 const instance = await SQLite.openDatabaseAsync(DB_NAME);
+                
+                // CRITICAL FIX: Enable Write-Ahead Logging (WAL) to prevent "database is locked" errors
+                await instance.execAsync(`
+                    PRAGMA journal_mode = WAL;
+                    PRAGMA synchronous = NORMAL;
+                    PRAGMA foreign_keys = ON;
+                `);
+
                 await initializeTables(instance);
                 db = instance;
                 return db;
             } catch (error) {
-                dbPromise = null;
+                dbPromise = null; // Reset the lock so we can try again if it failed
                 console.error('[Database] Failed to initialize database:', error);
                 throw error;
             }

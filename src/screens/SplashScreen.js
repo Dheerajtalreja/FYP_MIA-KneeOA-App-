@@ -43,7 +43,7 @@ const SplashScreen = ({ navigation }) => {
         ]).start();
 
         // Pulsing ring animation
-        Animated.loop(
+        const ringLoop = Animated.loop(
             Animated.sequence([
                 Animated.parallel([
                     Animated.timing(ringScale, {
@@ -70,7 +70,8 @@ const SplashScreen = ({ navigation }) => {
                     }),
                 ]),
             ])
-        ).start();
+        );
+        ringLoop.start();
 
         // Subtitle fade in
         setTimeout(() => {
@@ -82,8 +83,9 @@ const SplashScreen = ({ navigation }) => {
         }, 600);
 
         // Loading dots animation
-        const animateDots = () => {
-            Animated.loop(
+        let dotsLoop;
+        const dotsTimer = setTimeout(() => {
+            dotsLoop = Animated.loop(
                 Animated.stagger(200, [
                     Animated.sequence([
                         Animated.timing(dotAnim1, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -98,22 +100,13 @@ const SplashScreen = ({ navigation }) => {
                         Animated.timing(dotAnim3, { toValue: 0, duration: 400, useNativeDriver: true }),
                     ]),
                 ])
-            ).start();
-        };
-        setTimeout(animateDots, 800);
+            );
+            dotsLoop.start();
+        }, 800);
 
         // Navigate to the authenticated route after bootstrapping the persisted session.
         const timer = setTimeout(() => {
-            // CRITICAL: Check if navigation is ready before calling any navigation methods
-            if (!navigation || typeof navigation.isReady !== 'function' || !navigation.isReady()) {
-                console.warn('[Splash] Navigation not ready, attempting delayed navigation');
-                // Try again after a short delay
-                const retryTimer = setTimeout(() => {
-                    if (!active) return;
-                    performNavigationTransition();
-                }, 1000);
-                return () => clearTimeout(retryTimer);
-            }
+            if (!navigation) return; // Basic safety check
 
             performNavigationTransition();
 
@@ -122,7 +115,7 @@ const SplashScreen = ({ navigation }) => {
                     const authState = await hydrateAuthState();
                     const accessToken = authState?.accessToken || null;
 
-                    if (!active) return;
+                    if (!active) return; // Prevent state updates if component unmounted
 
                     if (accessToken) {
                         try {
@@ -132,32 +125,22 @@ const SplashScreen = ({ navigation }) => {
                             if (userKey) {
                                 const questionnaire = await getLatestQuestionnaire(userKey);
                                 if (questionnaire) {
-                                    if (active && navigation?.isReady()) {
-                                        navigation.replace('Home');
-                                    }
+                                    if (active) navigation.replace('Home');
                                     return;
                                 }
                             }
-                            if (active && navigation?.isReady()) {
-                                navigation.replace('Questionnaire');
-                            }
+                            if (active) navigation.replace('Questionnaire');
                         } catch (dbError) {
                             console.warn('[Splash] Failed to check state, defaulting to Home:', dbError);
-                            if (active && navigation?.isReady()) {
-                                navigation.replace('Home');
-                            }
+                            if (active) navigation.replace('Home');
                         }
                     } else {
-                        if (active && navigation?.isReady()) {
-                            navigation.replace('Login');
-                        }
+                        if (active) navigation.replace('Login');
                     }
                 } catch (hydrationError) {
                     if (!active) return;
                     console.error('[Splash] Auth hydration failed:', hydrationError);
-                    if (active && navigation?.isReady()) {
-                        navigation.replace('Login');
-                    }
+                    if (active) navigation.replace('Login');
                 }
             }
         }, 3000);
@@ -165,6 +148,9 @@ const SplashScreen = ({ navigation }) => {
         return () => {
             active = false;
             clearTimeout(timer);
+            clearTimeout(dotsTimer);
+            ringLoop.stop();           // Kill the ring loop
+            if (dotsLoop) dotsLoop.stop(); // Kill the dots loop
         };
     }, []);
 

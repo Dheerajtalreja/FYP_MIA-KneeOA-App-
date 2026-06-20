@@ -23,7 +23,13 @@ const ResultScreen = ({ navigation, route }) => {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                <TouchableOpacity style={styles.backButton} onPress={() => {
+                    if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        navigation.replace('Home');
+                    }
+                }}>
                     <Text style={styles.backButtonText}>✕</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Analysis Result</Text>

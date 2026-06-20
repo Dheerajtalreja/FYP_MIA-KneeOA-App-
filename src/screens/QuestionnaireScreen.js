@@ -10,21 +10,24 @@ import {
     Animated,
     Dimensions,
     Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS } from '../config/theme';
 import ProgressBar from '../components/ProgressBar';
 import { getUser, saveQuestionnaireResponse } from '../services/database';
-import { updateProfile } from '../services/api';
+import { getProfile, updateProfile } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
 const TOTAL_STEPS = 4;
 const STEP_LABELS = ['Basic Info', 'Pain Assessment', 'Mobility', 'History'];
 
-const QuestionnaireScreen = ({ navigation }) => {
+const QuestionnaireScreen = ({ navigation, route }) => {
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [initializing, setInitializing] = useState(true);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -45,6 +48,67 @@ const QuestionnaireScreen = ({ navigation }) => {
         familyHistory: false,
         additionalNotes: '',
     });
+
+    // Check if we're in edit mode
+    useEffect(() => {
+        const editMode = route?.params?.isEditing === true;
+        setIsEditing(editMode);
+
+        if (editMode) {
+            loadExistingData();
+        } else {
+            setInitializing(false);
+        }
+
+        // CRITICAL: Cleanup animations on unmount
+        return () => {
+            slideAnim.stopAnimation();
+            fadeAnim.stopAnimation();
+        };
+    }, [route?.params?.isEditing]);
+
+    // Load existing questionnaire data for editing
+    const loadExistingData = async () => {
+        try {
+            setLoading(true);
+            
+            // CRITICAL: Call GET /api/v1/profile/me to pre-fill form
+            const profileData = await getProfile();
+            
+            if (profileData) {
+                // Map backend data to form fields
+                setFormData({
+                    age: profileData.age || 50,
+                    gender: 'male', // Backend doesn't store gender in profile
+                    weight: 75, // Not in profile schema
+                    height: 170, // Not in profile schema
+                    painLevel: profileData.pain_level || 3,
+                    painLocation: 'both', // Not in profile schema
+                    painDuration: 'months', // Not in profile schema
+                    mobilityScore: profileData.mobility_level === 'limited' ? 3 : 
+                                   profileData.mobility_level === 'moderate' ? 6 : 9,
+                    canBendFully: true, // Not in profile schema
+                    canClimbStairs: true, // Not in profile schema
+                    canWalk30Min: true, // Not in profile schema
+                    previousInjuries: 'none', // Not in profile schema
+                    surgeries: 'none', // Not in profile schema
+                    medications: profileData.current_meds?.join(',') || 'ibuprofen',
+                    familyHistory: false, // Not in profile schema
+                    additionalNotes: '', // Not in profile schema
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load profile:', error);
+            Alert.alert(
+                'Load Error',
+                'Could not load your profile. Please try again.',
+                [{ text: 'OK' }]
+            );
+        } finally {
+            setLoading(false);
+            setInitializing(false);
+        }
+    };
 
     // Animations
     const slideAnim = useRef(new Animated.Value(0)).current;
@@ -86,29 +150,34 @@ const QuestionnaireScreen = ({ navigation }) => {
     const handleComplete = async () => {
         setLoading(true);
         try {
-            const currentUser = await getUser();
-            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
-            const localQuestionnaireId = await saveQuestionnaireResponse({ ...formData, userId });
-
+            // CRITICAL: Map form data to ProfileUpdate schema
             const mobilityLevel = formData.mobilityScore <= 3 ? 'limited' : formData.mobilityScore <= 6 ? 'moderate' : 'good';
             const currentMeds = formData.medications
                 .split(',')
                 .map((item) => item.trim())
                 .filter(Boolean);
 
-            try {
-                await updateProfile({
-                    age: formData.age,
-                    pain_level: formData.painLevel,
-                    mobility_level: mobilityLevel,
-                    current_meds: currentMeds.length > 0 ? currentMeds : null,
-                });
-            } catch (uploadError) {
-                console.warn('Profile update skipped:', uploadError.message);
-            }
+            const profileData = {
+                age: formData.age,
+                pain_level: formData.painLevel,
+                mobility_level: mobilityLevel,
+                current_meds: currentMeds.length > 0 ? currentMeds : null,
+            };
 
+            // CRITICAL: Call PUT /api/v1/profile/me and await 200 OK
+            await updateProfile(profileData);
+
+            // Also save to local database for offline access
+            const currentUser = await getUser();
+            const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
+            await saveQuestionnaireResponse({ 
+                ...formData, 
+                userId,
+                isEditing: isEditing
+            });
+
+            // CRITICAL: Only navigate to Home after successful API call
             navigation.replace('Home', {
-                questionnaireId: localQuestionnaireId,
                 clinicalProfile: {
                     age: formData.age,
                     painLevel: formData.painLevel,
@@ -117,10 +186,10 @@ const QuestionnaireScreen = ({ navigation }) => {
                 },
             });
         } catch (error) {
-            console.error('Failed to save questionnaire:', error);
+            console.error('Failed to save profile:', error);
             Alert.alert(
                 'Save Failed',
-                'We could not save your responses. Please check your connection and try again.',
+                'We could not save your profile. Please check your connection and try again.',
                 [
                     { text: 'Try Again', onPress: () => setLoading(false) },
                     { text: 'Cancel', style: 'cancel' },
@@ -292,7 +361,13 @@ const QuestionnaireScreen = ({ navigation }) => {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                <TouchableOpacity style={styles.backButton} onPress={() => {
+                    if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        navigation.replace('Home');
+                    }
+                }}>
                     <Text style={styles.backButtonText}>←</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Patient Profile</Text>
