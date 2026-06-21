@@ -91,8 +91,19 @@ npm run web
 - The app is designed to keep working offline by storing key records in SQLite.
 - If backend requests fail, some screens fall back to cached or placeholder content.
 
-## Related Docs
+## Documentation
 
-- [FRONTEND_CONTEXT.md](FRONTEND_CONTEXT.md)
-- [BACKEND_CONTEXT.md](BACKEND_CONTEXT.md)
-- [openapi.json](openapi.json)
+All project documentation is located in the [`docs/`](docs/) folder:
+
+- [FRONTEND_CONTEXT.md](docs/FRONTEND_CONTEXT.md) - Frontend architecture and screen flow
+- [BACKEND_CONTEXT.md](docs/BACKEND_CONTEXT.md) - Backend API and data models
+- [BACKEND_CONFIGURATION.md](docs/BACKEND_CONFIGURATION.md) - Backend setup and configuration
+- [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) - Implementation details and patterns
+- [MOBILE_SYNC.md](docs/MOBILE_SYNC.md) - Mobile data synchronization strategy
+- [PASSWORD_RESET_IMPLEMENTATION.md](docs/PASSWORD_RESET_IMPLEMENTATION.md) - Password reset flow implementation
+- [CRITICAL_FIXES.md](docs/CRITICAL_FIXES.md) - Critical bug fixes and solutions
+- [BUG_FIX_SUMMARY.md](docs/BUG_FIX_SUMMARY.md) - Detailed bug fix documentation
+
+## Related Files
+
+- [openapi.json](openapi.json) - API specification

@@ -12,10 +12,12 @@ import {
     Animated,
     Dimensions,
     ScrollView,
+    KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { loginUser, setAuthToken, setRefreshToken, fetchProfile } from '../services/api';
-import { saveUser } from '../services/database';
+import { useAuth } from '../contexts/AuthContext';
+import { setAuthToken, setRefreshToken } from '../services/api';
+import { saveUser, getLatestQuestionnaire } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = 220; // Fixed height taaki flicker na ho
@@ -27,6 +29,9 @@ const LoginScreen = ({ navigation }) => {
     const [showPassword, setShowPassword] = useState(false);
     const [emailFocused, setEmailFocused] = useState(false);
     const [passwordFocused, setPasswordFocused] = useState(false);
+
+    // Safely destructure from AuthContext with type checking
+    const { login } = useAuth();
 
     // Animations
     const headerFade = useRef(new Animated.Value(0)).current;
@@ -59,6 +64,14 @@ const LoginScreen = ({ navigation }) => {
         ]).start(() => {
             hasAnimated.current = true;
         });
+
+        // CRITICAL: Cleanup animations on unmount to prevent ghost animation crashes
+        return () => {
+            // Stop any running animations
+            headerFade.stopAnimation();
+            formSlide.stopAnimation();
+            formFade.stopAnimation();
+        };
     }, []);
 
     const handleForgotPassword = () => {
@@ -70,6 +83,17 @@ const LoginScreen = ({ navigation }) => {
             Alert.alert('Missing Fields', 'Please enter both email and password.');
             return;
         }
+
+        // SAFETY CHECK: Verify login function exists before calling
+        if (typeof login !== 'function') {
+            console.error('[LoginScreen] Login function is not available - AuthContext may not be initialized');
+            Alert.alert(
+                'Authentication Error',
+                'Login service is not ready. Please try again in a moment.'
+            );
+            return;
+        }
+
         setLoading(true);
 
         Animated.sequence([
@@ -78,43 +102,56 @@ const LoginScreen = ({ navigation }) => {
         ]).start();
 
         try {
-            const response = await loginUser(email.trim().toLowerCase(), password);
-            const token = response?.access_token || response?.token || response?.data?.token || null;
-            const refresh = response?.refresh_token || null;
+            console.log('[LoginScreen] Authenticating with backend...');
 
-            if (token) {
-                setAuthToken(token);
-            }
-            if (refresh) setRefreshToken(refresh);
-
-            // Determine profile info: either from login response or fetch /profile/me
-            let profile = response?.user || null;
-            let serverId = response?.user_id || response?.user?.user_id || response?.user?.id || null;
-            let role = response?.role || response?.user?.role || 'patient';
-
-            if (!profile) {
-                try {
-                    const me = await fetchProfile();
-                    profile = me || null;
-                    serverId = serverId || me?.user_id || me?.userId || null;
-                    role = role || me?.role || 'patient';
-                } catch (e) {
-                    // ignore — continue with partial info
-                }
+            // Step 1: Authenticate user using AuthContext
+            const result = await login(email.trim().toLowerCase(), password);
+            
+            if (!result?.success) {
+                Alert.alert('Login Failed', result?.message || 'Invalid credentials.');
+                setLoading(false);
+                return;
             }
 
+            const token = result.token;
+
+            console.log('[LoginScreen] Authentication successful, checking profile...');
+
+            // CRITICAL: Save user to local database only (no profile sync)
+            const currentUser = result.user || {};
+            const userId = currentUser?.user_id || currentUser?.id || email.trim().toLowerCase();
+            
             await saveUser({
-                id: serverId || null,
-                email: response?.email || email.trim().toLowerCase(),
-                fullName: profile?.full_name || response?.full_name || email.trim(),
-                role: role || 'patient',
-                token,
-                refreshToken: refresh,
-                profile: profile || response,
+                id: currentUser?.user_id || null,
+                email: email.trim().toLowerCase(),
+                fullName: currentUser?.full_name || 'User',
+                role: 'patient',
+                profile: { authenticated: true },
             });
 
-            navigation.replace('Questionnaire');
+            // CRITICAL: Check if user has completed their medical profile
+            if (userId) {
+                const questionnaire = await getLatestQuestionnaire(userId);
+                
+                if (questionnaire) {
+                    // User has completed questionnaire → Go to Home
+                    console.log('[LoginScreen] Profile complete, navigating to Home');
+                    navigation.replace('Home');
+                } else {
+                    // User has NOT completed questionnaire → Force to Questionnaire
+                    console.log('[LoginScreen] Profile incomplete, forcing to Questionnaire');
+                    navigation.replace('Questionnaire');
+                }
+            } else {
+                // No user ID found, default to Home
+                console.warn('[LoginScreen] No user ID found, defaulting to Home');
+                navigation.replace('Home');
+            }
+
         } catch (error) {
+            console.error('[LoginScreen] Login error:', error);
+
+            // Fallback for demo user
             if (email.toLowerCase() === 'test@test.com' && password === '123456') {
                 await saveUser({
                     email: email.trim().toLowerCase(),
@@ -122,20 +159,23 @@ const LoginScreen = ({ navigation }) => {
                     role: 'patient',
                     profile: { demo: true },
                 });
-                navigation.replace('Questionnaire');
+                navigation.replace('Home');
                 return;
             }
 
-            navigation.navigate('Error', {
-                title: 'Login failed',
-                message: error.message || 'Unable to sign in right now. Please check your connection and try again.',
-                retryRoute: 'Login',
-                retryLabel: 'Try Sign In Again',
-            });
+            const errorMessage = error.message || 'Unable to sign in. Please check your credentials and connection.';
+            Alert.alert('Sign In Error', errorMessage);
         } finally {
             setLoading(false);
         }
     };
+
+    // CRITICAL: Cleanup button animation on unmount
+    useEffect(() => {
+        return () => {
+            buttonScale.stopAnimation();
+        };
+    }, []);
 
     return (
         <View style={styles.container}>
@@ -168,14 +208,18 @@ const LoginScreen = ({ navigation }) => {
             </LinearGradient>
 
             {/* --- SCROLLABLE FORM SECTION --- */}
-            <ScrollView
-                style={StyleSheet.absoluteFill} // Poori screen cover karega par header iske upar rahega
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                overScrollMode="never"
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={StyleSheet.absoluteFill}
             >
+                <ScrollView
+                    style={styles.flex}
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                    overScrollMode="never"
+                >
                 <Animated.View
                     style={[
                         styles.formContainer,
@@ -269,6 +313,7 @@ const LoginScreen = ({ navigation }) => {
                     </View>
                 </Animated.View>
             </ScrollView>
+            </KeyboardAvoidingView>
         </View>
     );
 };
@@ -277,6 +322,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#0F1923',
+    },
+    flex: {
+        flex: 1,
     },
     topSection: {
         position: 'absolute',

@@ -89,10 +89,19 @@ const HistoryScreen = ({ navigation }) => {
 
             if (userKey === String(user.server_id || user.email || user.id)) {
                 try {
-                    const [profileHistory, reports] = await Promise.all([fetchProfileHistory(), fetchReports()]);
+                    const [profileHistoryResult, reportsResult] = await Promise.allSettled([fetchProfileHistory(), fetchReports()]);
+                    
+                    const profileHistory = profileHistoryResult.status === 'fulfilled' 
+                        ? profileHistoryResult.value 
+                        : null;
+                    const reports = reportsResult.status === 'fulfilled' 
+                        ? reportsResult.value 
+                        : [];
+                    
                     setCloudHistory(profileHistory?.history || []);
                     setCloudReports(Array.isArray(reports) ? reports : []);
-                } catch {
+                } catch (error) {
+                    console.error('[HistoryScreen] Failed to fetch cloud data:', error);
                     setCloudHistory([]);
                     setCloudReports([]);
                 }
@@ -120,7 +129,7 @@ const HistoryScreen = ({ navigation }) => {
 
     useEffect(() => {
         loadHistory();
-    }, [loadHistory]);
+    }, []);
 
     const selectedPatient = useMemo(
         () =>
@@ -164,7 +173,13 @@ const HistoryScreen = ({ navigation }) => {
                 <View style={styles.decorCircleOne} />
                 <View style={styles.decorCircleTwo} />
                 <View style={styles.headerRow}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                    <TouchableOpacity onPress={() => {
+                        if (navigation.canGoBack()) {
+                            navigation.goBack();
+                        } else {
+                            navigation.replace('Home');
+                        }
+                    }} style={styles.backButton}>
                         <Text style={styles.backButtonText}>←</Text>
                     </TouchableOpacity>
                     <View style={styles.headerTextBlock}>

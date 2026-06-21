@@ -63,14 +63,28 @@ const ensureAuthStateLoaded = async () => {
 
     if (!authStateLoadingPromise) {
         authStateLoadingPromise = (async () => {
-            const stored = await loadStoredAuthState();
-            authToken = stored.accessToken || null;
-            refreshToken = stored.refreshToken || null;
-            authStateLoaded = true;
-            return { accessToken: authToken, refreshToken };
-        })().finally(() => {
-            authStateLoadingPromise = null;
-        });
+            try {
+                // Defensive: Ensure loadStoredAuthState is available
+                if (typeof loadStoredAuthState !== 'function') {
+                    throw new Error('loadStoredAuthState is not a function');
+                }
+
+                const stored = await loadStoredAuthState();
+                authToken = stored.accessToken || null;
+                refreshToken = stored.refreshToken || null;
+                authStateLoaded = true;
+                return { accessToken: authToken, refreshToken };
+            } catch (error) {
+                console.error('[apiCore] Failed to load auth state:', error);
+                // Return safe defaults instead of throwing
+                authToken = null;
+                refreshToken = null;
+                authStateLoaded = true;
+                return { accessToken: null, refreshToken: null };
+            } finally {
+                authStateLoadingPromise = null;
+            }
+        })();
     }
 
     return authStateLoadingPromise;
@@ -172,7 +186,7 @@ const mapErrorResponse = async (response) => {
 
     if (response.status === 401) {
         clearAuthTokens();
-        const error = new UnauthorizedError();
+        const error = new UnauthorizedError(null, { status: 401 });
         if (sessionExpiredHandler) {
             sessionExpiredHandler(error);
         }
@@ -180,16 +194,17 @@ const mapErrorResponse = async (response) => {
     }
 
     if (response.status === 403) {
-        return new ForbiddenError();
+        return new ForbiddenError(null, { status: 403 });
     }
 
     if (response.status === 404) {
-        return new NotFoundError();
+        return new NotFoundError(null, { status: 404 });
     }
 
     if (response.status === 422) {
         const detail = Array.isArray(payload?.detail) ? payload.detail : [];
         return new ValidationError(genericMessageForStatus(422), {
+            status: 422,
             details: detail,
             fieldErrors: buildFieldErrors(detail),
             raw: payload,
@@ -221,15 +236,99 @@ const applyHeaders = (headers = {}, body = null) => {
     return nextHeaders;
 };
 
-const handleResponse = async (response) => {
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+const subscribeTokenRefresh = (cb) => {
+    refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token) => {
+    refreshSubscribers.map(cb => cb(token));
+    refreshSubscribers = [];
+};
+
+const handleResponse = async (response, originalOptions) => {
     if (!response.ok) {
+        if (response.status === 401 && !originalOptions._retry) {
+            if (isRefreshing) {
+                return new Promise(resolve => {
+                    subscribeTokenRefresh(token => {
+                        const nextHeaders = new Headers(originalOptions.headers);
+                        nextHeaders.set('Authorization', `Bearer ${token}`);
+                        resolve(fetch(originalOptions.url, { ...originalOptions, headers: nextHeaders }));
+                    });
+                }).then(res => handleResponse(res, originalOptions));
+            }
+
+            originalOptions._retry = true;
+            isRefreshing = true;
+
+            try {
+                const data = await refreshAuthToken();
+                const newToken = data?.access_token;
+                isRefreshing = false;
+                if (newToken) {
+                    onRefreshed(newToken);
+                    const nextHeaders = new Headers(originalOptions.headers);
+                    nextHeaders.set('Authorization', `Bearer ${newToken}`);
+                    return handleResponse(await fetch(originalOptions.url, { ...originalOptions, headers: nextHeaders }), originalOptions);
+                }
+            } catch (refreshError) {
+                isRefreshing = false;
+                throw await mapErrorResponse(response);
+            }
+        }
         throw await mapErrorResponse(response);
     }
 
     return parseResponseBody(response);
 };
 
-const request = async (path, options = {}, { auth = false } = {}) => {
+/**
+ * Enhanced error message extractor for robust error reporting
+ */
+const extractErrorMessage = (payload) => {
+    if (payload === null || payload === undefined) return null;
+    if (typeof payload === 'string') return payload.trim() || null;
+    if (typeof payload === 'number' || typeof payload === 'boolean') return String(payload);
+
+    if (Array.isArray(payload)) {
+        const messages = payload.map(item => extractErrorMessage(item)).filter(Boolean);
+        return messages.length ? messages.join(' ') : null;
+    }
+
+    if (typeof payload === 'object') {
+        // Try common field names for errors
+        for (const key of ['detail', 'message', 'error', 'msg', 'title']) {
+            const message = extractErrorMessage(payload[key]);
+            if (message) return message;
+        }
+
+        // Try validation errors
+        if (payload.errors) {
+            const message = extractErrorMessage(payload.errors);
+            if (message) return message;
+        }
+
+        // Try values of the object
+        const nestedMessages = Object.values(payload)
+            .map(item => extractErrorMessage(item))
+            .filter(Boolean);
+
+        if (nestedMessages.length) return nestedMessages.join(' ');
+
+        try {
+            return JSON.stringify(payload);
+        } catch {
+            return 'An unexpected error occurred.';
+        }
+    }
+
+    return null;
+};
+
+const request = async (path, options = {}, { auth = false, timeout = 15000 } = {}) => {
     await ensureAuthStateLoaded();
 
     const nextHeaders = applyHeaders(options.headers || {}, options.body ?? null);
@@ -238,12 +337,26 @@ const request = async (path, options = {}, { auth = false } = {}) => {
         nextHeaders.set('Authorization', `Bearer ${authToken}`);
     }
 
-    const response = await fetch(buildApiUrl(normalizePath(path)), {
-        ...options,
-        headers: nextHeaders,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    return handleResponse(response);
+    try {
+        const url = buildApiUrl(normalizePath(path));
+        const response = await fetch(url, {
+            ...options,
+            headers: nextHeaders,
+            signal: controller.signal,
+        });
+
+        return await handleResponse(response, { ...options, headers: nextHeaders, url });
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new ApiError('Request timed out. Please check your internet connection.', { status: 408, code: 'timeout' });
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 };
 
 const validateRequiredString = (value, fieldName) => {
@@ -396,6 +509,23 @@ export const loginUser = async (email, password, grantType = 'password') => {
     });
 };
 
+export const requestPasswordReset = async (email) => {
+    validateRequiredString(email, 'email');
+    return request('/api/v1/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    });
+};
+
+export const resetPassword = async (token, newPassword) => {
+    validateRequiredString(token, 'token');
+    validateRequiredString(newPassword, 'new_password');
+    return request('/api/v1/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token, new_password: newPassword }),
+    });
+};
+
 export const registerUser = async (userData) => {
     const payload = buildUserCreatePayload(userData);
     const response = await request('/api/v1/auth/register', {
@@ -542,16 +672,6 @@ export const fetchPatientHistory = async (patientId) => {
     return request(`/api/v1/profile/patients/${pathId}/history`, {}, { auth: true });
 };
 
-export const updateProfile = async (profileData) => {
-    const payload = buildProfileUpdatePayload(profileData);
-    return request('/api/v1/profile/me', {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-    }, {
-        auth: true,
-    });
-};
-
 export const fetchVideoLibrary = async (klGrade = null, category = null) => {
     const params = new URLSearchParams();
 
@@ -579,6 +699,87 @@ export const fetchLatestFromCloud = async () => request('/api/v1/mobile/sync/dat
 export const fetchSyncSummary = async () => request('/api/v1/mobile/sync/summary', {}, { auth: true });
 
 export const fetchSyncStatus = async () => request('/api/v1/mobile/sync/status', {}, { auth: true });
+
+/**
+ * Internal helper to refresh the access token using a refresh token.
+ */
+export const refreshAuthToken = async () => {
+    if (!refreshToken) throw new UnauthorizedError('No refresh token available.');
+
+    try {
+        const data = await request('/api/v1/auth/refresh', {
+            method: 'POST',
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        if (data?.access_token) {
+            setAuthToken(data.access_token);
+            if (data.refresh_token) setRefreshToken(data.refresh_token);
+            return data;
+        }
+        throw new UnauthorizedError('Refresh failed: No access token received.');
+    } catch (error) {
+        clearAuthTokens();
+        throw error;
+    }
+};
+
+/**
+ * Fetches the user profile and syncs it with local storage/database.
+ * Note: Questionnaire data is now part of the profile object.
+ */
+export const fetchCompleteUserProfile = async () => {
+    try {
+        console.log('[Fetch-and-Sync] Fetching complete user profile from backend...');
+
+        // Fetch user profile which now contains all questionnaire fields
+        const profile = await getProfile();
+
+        // Fetch scans and recommendations only
+        const [scansResult, recommendationsResult] = await Promise.allSettled([
+            authFetch('/api/v1/diagnostic/reports'), // Changed to correct endpoint
+            authFetch('/api/v1/recommendation/')     // Ensure this is called correctly
+        ]);
+
+        const getResultValue = (result, defaultValue) => {
+            if (result.status === 'fulfilled') return result.value;
+            console.warn(`[Fetch-and-Sync] Error fetching secondary data:`, result.reason);
+            return defaultValue;
+        };
+
+        const completeProfile = {
+            user: profile,
+            questionnaire: profile, // ✅ Questionnaire data is now inside the profile object
+            scanHistory: getResultValue(scansResult, []),
+            recommendations: getResultValue(recommendationsResult, []),
+            fetchedAt: new Date().toISOString(),
+        };
+
+        console.log('[Fetch-and-Sync] Complete profile fetched successfully');
+        return completeProfile;
+    } catch (error) {
+        console.error('[Fetch-and-Sync] Failed to fetch complete profile:', error);
+        throw error;
+    }
+};
+
+/**
+ * Get current user profile from backend
+ */
+export const getProfile = async () => {
+    return request('/api/v1/profile/me', {}, { auth: true });
+};
+
+/**
+ * Update current user profile
+ * @param {Object} profileData - Profile update data matching ProfileUpdate schema
+ */
+export const updateProfile = async (profileData) => {
+    return request('/api/v1/profile/me', {
+        method: 'PUT',
+        body: JSON.stringify(profileData),
+    }, { auth: true });
+};
 
 export const isOnline = async () => {
     try {

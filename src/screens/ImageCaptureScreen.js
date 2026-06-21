@@ -76,9 +76,36 @@ const ImageCaptureScreen = ({ navigation, route }) => {
         setAnalyzing(true);
 
         try {
-            const currentUser = await getUser();
+            let currentUser;
+            try {
+                currentUser = await getUser();
+            } catch (dbError) {
+                console.error('[ImageCaptureScreen] Failed to get user:', dbError);
+                Alert.alert(
+                    'Database Error',
+                    'Unable to access local database. Please restart the app.',
+                    [{ text: 'OK', onPress: () => navigation.goBack() }]
+                );
+                setAnalyzing(false);
+                return;
+            }
+
             const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
-            const uploadResult = await uploadXrayImage(imageUri);
+            
+            let uploadResult;
+            try {
+                uploadResult = await uploadXrayImage(imageUri);
+            } catch (uploadError) {
+                console.error('[ImageCaptureScreen] Upload failed:', uploadError);
+                Alert.alert(
+                    'Upload Failed',
+                    'Unable to upload image. Please check your connection.',
+                    [{ text: 'Try Again', onPress: () => handleAnalyze() }]
+                );
+                setAnalyzing(false);
+                return;
+            }
+            
             const imageId = uploadResult?.image_id ?? uploadResult?.imageId ?? uploadResult?.id;
 
             const analysis = await analyzeUploadedXray(
@@ -101,17 +128,44 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 exerciseVideoUrls: analysis?.exercise_video_urls || [],
             };
 
-            const scanId = await saveScanResult({
-                userId,
-                imageUri,
-                imageType: 'xray',
-                viewType: 'PA',
-                kneeSide,
-                klGrade: normalizedResult.klGrade,
-                riskScore: normalizedResult.confidence,
-                analysisResult: analysis,
-                annotations: analysis?.warnings || {},
-            });
+            let scanId;
+            try {
+                scanId = await saveScanResult({
+                    userId,
+                    imageUri,
+                    imageType: 'xray',
+                    viewType: 'PA',
+                    kneeSide,
+                    klGrade: normalizedResult.klGrade,
+                    riskScore: normalizedResult.confidence,
+                    analysisResult: analysis,
+                    annotations: analysis?.warnings || {},
+                });
+            } catch (saveError) {
+                console.error('[ImageCaptureScreen] Failed to save scan:', saveError);
+                Alert.alert(
+                    'Save Failed',
+                    'Unable to save scan results locally. Proceeding without local backup.',
+                    [{ text: 'OK', onPress: () => navigation.navigate('Result', {
+                        imageUri,
+                        kneeSide,
+                        scanId: null,
+                        questionnaireId,
+                        clinicalProfile,
+                        analysis: normalizedResult,
+                    }) }]
+                );
+                navigation.navigate('Result', {
+                    imageUri,
+                    kneeSide,
+                    scanId: null,
+                    questionnaireId,
+                    clinicalProfile,
+                    analysis: normalizedResult,
+                });
+                setAnalyzing(false);
+                return;
+            }
 
             navigation.navigate('Result', {
                 imageUri,
@@ -136,31 +190,52 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 isInvalid: true,
             };
 
-            const currentUser = await getUser();
+            let currentUser;
+            try {
+                currentUser = await getUser();
+            } catch (dbError) {
+                console.error('[ImageCaptureScreen] Failed to get user in error handler:', dbError);
+                Alert.alert('Database Error', 'Unable to access local database.');
+                setAnalyzing(false);
+                return;
+            }
+            
             const userId = currentUser?.server_id || currentUser?.email || currentUser?.id || 'current_user';
 
-            const scanId = await saveScanResult({
-                userId,
-                imageUri,
-                imageType: 'xray',
-                viewType: 'PA',
-                kneeSide,
-                klGrade: null,
-                riskScore: 0,
-                analysisResult: fallbackResult,
-                annotations: {
-                    error: error?.message || 'Image analysis failed',
-                },
-            });
+            try {
+                const scanId = await saveScanResult({
+                    userId,
+                    imageUri,
+                    imageType: 'xray',
+                    viewType: 'PA',
+                    kneeSide,
+                    klGrade: null,
+                    riskScore: 0,
+                    analysisResult: fallbackResult,
+                    annotations: {
+                        error: error?.message || 'Image analysis failed',
+                    },
+                });
 
-            navigation.navigate('Result', {
-                imageUri,
-                kneeSide,
-                scanId,
-                questionnaireId,
-                clinicalProfile,
-                analysis: fallbackResult,
-            });
+                navigation.navigate('Result', {
+                    imageUri,
+                    kneeSide,
+                    scanId,
+                    questionnaireId,
+                    clinicalProfile,
+                    analysis: fallbackResult,
+                });
+            } catch (saveError) {
+                console.error('[ImageCaptureScreen] Failed to save fallback scan:', saveError);
+                navigation.navigate('Result', {
+                    imageUri,
+                    kneeSide,
+                    scanId: null,
+                    questionnaireId,
+                    clinicalProfile,
+                    analysis: fallbackResult,
+                });
+            }
         } finally {
             setAnalyzing(false);
         }
@@ -169,7 +244,13 @@ const ImageCaptureScreen = ({ navigation, route }) => {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                <TouchableOpacity style={styles.backButton} onPress={() => {
+                    if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        navigation.replace('Home');
+                    }
+                }}>
                     <Text style={styles.backButtonText}>←</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Scan X-Ray</Text>

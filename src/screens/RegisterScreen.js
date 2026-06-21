@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerUser } from '../services/api';
 import { COLORS, SHADOWS, SIZES } from '../config/theme';
+import { saveUser } from '../services/database';
 
 const RegisterScreen = ({ navigation }) => {
     const [fullName, setFullName] = useState('');
@@ -53,6 +54,13 @@ const RegisterScreen = ({ navigation }) => {
                 }),
             ]),
         ]).start();
+
+        // CRITICAL: Cleanup animations on unmount to prevent ghost animation crashes
+        return () => {
+            headerFade.stopAnimation();
+            formSlide.stopAnimation();
+            formFade.stopAnimation();
+        };
     }, []);
 
     const handleRegister = async () => {
@@ -68,6 +76,13 @@ const RegisterScreen = ({ navigation }) => {
 
         setLoading(true);
 
+        // CRITICAL: Cleanup button animation on unmount
+        useEffect(() => {
+            return () => {
+                buttonScale.stopAnimation();
+            };
+        }, []);
+
         Animated.sequence([
             Animated.timing(buttonScale, {
                 toValue: 0.96,
@@ -82,6 +97,7 @@ const RegisterScreen = ({ navigation }) => {
         ]).start();
 
         try {
+            // CRITICAL: Only call POST /api/v1/auth/register with { email, password, full_name }
             await registerUser({
                 full_name: fullName.trim(),
                 email: email.trim().toLowerCase(),
@@ -89,12 +105,27 @@ const RegisterScreen = ({ navigation }) => {
                 role,
             });
 
-            Alert.alert('Account created', 'Your account is ready. Please sign in to continue.', [
-                {
-                    text: 'Continue',
-                    onPress: () => navigation.replace('Login'),
-                },
-            ]);
+            // CRITICAL: Save user to local database immediately
+            const userId = email.trim().toLowerCase();
+            await saveUser({
+                id: null,
+                email: email.trim().toLowerCase(),
+                fullName: fullName.trim(),
+                role: 'patient',
+                profile: { new_user: true },
+            });
+
+            // CRITICAL: Navigate directly to QuestionnaireScreen (no profile sync)
+            Alert.alert(
+                'Account Created',
+                'Welcome! Please complete your medical profile to get started.',
+                [
+                    {
+                        text: 'Continue',
+                        onPress: () => navigation.replace('Questionnaire'),
+                    },
+                ]
+            );
         } catch (error) {
             navigation.navigate('Error', {
                 title: 'Registration failed',
