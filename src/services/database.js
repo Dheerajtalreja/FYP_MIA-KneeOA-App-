@@ -2,7 +2,8 @@
 // Offline-first storage using expo-sqlite for caching user data.
 
 import { Platform } from 'react-native';
-import * as SQLite from 'expo-sqlite';
+
+const SQLite = Platform.OS !== 'web' ? require('expo-sqlite') : null;
 
 const DB_NAME = 'kneeoa_local.db';
 let db = null;

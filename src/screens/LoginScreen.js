@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
-import { setAuthToken, setRefreshToken } from '../services/api';
+import { setAuthToken, setRefreshToken, getProfile } from '../services/api';
 import { saveUser, getLatestQuestionnaire } from '../services/database';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -118,15 +118,30 @@ const LoginScreen = ({ navigation }) => {
             console.log('[LoginScreen] Authentication successful, checking profile...');
 
             // CRITICAL: Save user to local database only (no profile sync)
-            const currentUser = result.user || {};
+            let currentUser = result.user || {};
+            if (!currentUser?.full_name && !currentUser?.fullName && !currentUser?.name) {
+                try {
+                    currentUser = await getProfile();
+                } catch (profileError) {
+                    console.warn('[LoginScreen] Failed to fetch profile after login:', profileError);
+                }
+            }
+
             const userId = currentUser?.user_id || currentUser?.id || email.trim().toLowerCase();
-            
+            const profileName =
+                currentUser?.full_name ||
+                currentUser?.fullName ||
+                currentUser?.profile?.full_name ||
+                currentUser?.profile?.fullName ||
+                currentUser?.name ||
+                email.trim().toLowerCase();
+
             await saveUser({
-                id: currentUser?.user_id || null,
-                email: email.trim().toLowerCase(),
-                fullName: currentUser?.full_name || 'User',
-                role: 'patient',
-                profile: { authenticated: true },
+                id: currentUser?.user_id || currentUser?.id || null,
+                email: currentUser?.email || email.trim().toLowerCase(),
+                fullName: profileName,
+                role: currentUser?.role || 'patient',
+                profile: currentUser || { authenticated: true },
             });
 
             // CRITICAL: Check if user has completed their medical profile

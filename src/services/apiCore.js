@@ -477,10 +477,22 @@ const buildProfileUpdatePayload = (profileData = {}) => {
     return payload;
 };
 
-const buildMultipartFile = (imageUri) => {
-    const fileName = String(imageUri).split('/').pop() || 'xray.jpg';
+const buildMultipartFile = (imageUri, fileOptions = {}) => {
+    const providedName = fileOptions.fileName || '';
+    const rawName = providedName || String(imageUri).split('/').pop() || 'xray.jpg';
+    const fileName = rawName.includes('.') ? rawName : `${rawName}.jpg`;
     const extension = fileName.split('.').pop()?.toLowerCase();
-    const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+    const mimeType =
+        fileOptions.mimeType ||
+        (extension === 'png'
+            ? 'image/png'
+            : extension === 'jpg' || extension === 'jpeg'
+                ? 'image/jpeg'
+                : extension === 'webp'
+                    ? 'image/webp'
+                    : extension === 'heic' || extension === 'heif'
+                        ? 'image/heic'
+                        : 'image/jpeg');
 
     return {
         uri: imageUri,
@@ -517,6 +529,29 @@ export const requestPasswordReset = async (email) => {
     });
 };
 
+export const requestOtpCode = async (email) => {
+    validateRequiredString(email, 'email');
+    return request('/api/v1/auth/request-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    });
+};
+
+export const verifyOtpAndResetPassword = async ({ email, otpCode, newPassword }) => {
+    validateRequiredString(email, 'email');
+    validateRequiredString(otpCode, 'otp_code');
+    validateRequiredString(newPassword, 'new_password');
+
+    return request('/api/v1/auth/verify-otp-and-reset', {
+        method: 'POST',
+        body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            otp_code: otpCode.trim(),
+            new_password: newPassword,
+        }),
+    });
+};
+
 export const resetPassword = async (token, newPassword) => {
     validateRequiredString(token, 'token');
     validateRequiredString(newPassword, 'new_password');
@@ -550,11 +585,11 @@ export const registerUser = async (userData) => {
     return response;
 };
 
-export const uploadXrayImage = async (imageUri) => {
+export const uploadXrayImage = async (imageUri, fileOptions = {}) => {
     validateRequiredString(imageUri, 'file');
 
     const formData = new FormData();
-    formData.append('file', buildMultipartFile(imageUri));
+    formData.append('file', buildMultipartFile(imageUri, fileOptions));
 
     return request('/api/v1/upload/', {
         method: 'POST',

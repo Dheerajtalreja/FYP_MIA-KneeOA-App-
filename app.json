@@ -64,8 +64,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "660af8ba-3112-45df-99f8-a9e511070d53"
+        "projectId": "4051cb15-5d52-4937-9726-837d0ceec645"
       }
-    }
+    },
+    "owner": "dheerajiobms-organization"
   }
 }

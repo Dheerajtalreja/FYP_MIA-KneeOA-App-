@@ -99,8 +99,9 @@ This `docs/` folder contains all essential documentation for the Knee OA mobile 
 ### For Mobile Developers
 1. **Start here**: [FRONTEND_CONTEXT.md](FRONTEND_CONTEXT.md)
 2. **Implementation**: [MOBILE_SYNC.md](../MOBILE_SYNC.md)
-3. **Backend API**: [BACKEND_CONFIGURATION.md](../BACKEND_CONFIGURATION.md)
-4. **Auth UX**: Register, Forgot Password, and Error screens are part of the themed login flow
+3. **API contract**: [MOBILE_API_INTEGRATION_GUIDE.md](MOBILE_API_INTEGRATION_GUIDE.md)
+4. **Backend API**: [BACKEND_CONFIGURATION.md](../BACKEND_CONFIGURATION.md)
+5. **Auth UX**: Register, Forgot Password, and Error screens are part of the themed login flow
 
 ### For Backend Developers
 1. **Start here**: [BACKEND_CONTEXT.md](BACKEND_CONTEXT.md)

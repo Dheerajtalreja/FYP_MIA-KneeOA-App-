@@ -16,6 +16,7 @@ import { getUser, saveScanResult } from '../services/database';
 
 const ImageCaptureScreen = ({ navigation, route }) => {
     const [imageUri, setImageUri] = useState(null);
+    const [selectedAsset, setSelectedAsset] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
     const [kneeSide, setKneeSide] = useState('left');
     const questionnaireId = route.params?.questionnaireId;
@@ -51,8 +52,10 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                           allowsEditing: false,
                       });
 
-            if (!result.canceled && result.assets?.[0]?.uri) {
-                setImageUri(result.assets[0].uri);
+            if (!result.canceled && result.assets?.[0]) {
+                const asset = result.assets[0];
+                setImageUri(asset.uri);
+                setSelectedAsset(asset);
             }
         } catch (error) {
             Alert.alert('Unable to open picker', error.message || 'Please try again.');
@@ -94,12 +97,18 @@ const ImageCaptureScreen = ({ navigation, route }) => {
             
             let uploadResult;
             try {
-                uploadResult = await uploadXrayImage(imageUri);
+                uploadResult = await uploadXrayImage(imageUri, {
+                    fileName: selectedAsset?.fileName,
+                    mimeType: selectedAsset?.mimeType,
+                });
             } catch (uploadError) {
                 console.error('[ImageCaptureScreen] Upload failed:', uploadError);
+                const uploadMessage =
+                    uploadError?.message ||
+                    'Unable to upload image. Please check your connection.';
                 Alert.alert(
                     'Upload Failed',
-                    'Unable to upload image. Please check your connection.',
+                    uploadMessage,
                     [{ text: 'Try Again', onPress: () => handleAnalyze() }]
                 );
                 setAnalyzing(false);

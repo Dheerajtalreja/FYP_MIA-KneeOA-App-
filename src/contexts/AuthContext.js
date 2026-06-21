@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { setAuthToken, setRefreshToken as apiSetRefreshToken, clearAuthTokens, loginUser } from '../services/api';
+import { setAuthToken, setRefreshToken as apiSetRefreshToken, clearAuthTokens, loginUser, getProfile } from '../services/api';
 import { loadStoredAuthState, persistStoredAuthState, clearStoredAuthState } from '../services/tokenStore';
 import { getUser, getLatestQuestionnaire } from '../services/database'; // ✅ FIXED: Added missing database import
 
@@ -110,8 +110,20 @@ export const AuthProvider = ({ children }) => {
             setAuthToken(token);
             if (refresh) apiSetRefreshToken(refresh);
 
+            // Fetch the real user profile so the app can display the correct name
+            let profile = null;
+            try {
+                profile = await getProfile();
+            } catch (profileError) {
+                console.warn('[AuthContext] Could not fetch profile after login:', profileError);
+            }
+
             console.log('[AuthContext] Login successful');
-            return { success: true, token, user: authResponse?.data || authResponse };
+            return {
+                success: true,
+                token,
+                user: profile || authResponse?.data || authResponse,
+            };
         } catch (error) {
             console.error('[AuthContext] Login failed:', error);
             throw error;
