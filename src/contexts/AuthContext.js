@@ -234,6 +234,8 @@ export const useAuth = () => {
     const safeMethods = {
         isAuthenticated: context.isAuthenticated,
         isLoading: context.isLoading,
+        // FIX: Expose authReady so App.js can reliably wait for auth hydration before routing.
+        authReady: context.authReady,
         user: context.user,
         accessToken: context.accessToken,
         refreshToken: context.refreshToken,

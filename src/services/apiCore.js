@@ -501,6 +501,17 @@ const buildMultipartFile = (imageUri, fileOptions = {}) => {
     };
 };
 
+const isRetryableUploadError = (error) => {
+    if (!error) return false;
+
+    if (error instanceof ApiError && error.status === 408) {
+        return true;
+    }
+
+    const message = String(error?.message || '');
+    return error instanceof TypeError || /network request failed|failed to fetch|abort/i.test(message);
+};
+
 export const loginUser = async (email, password, grantType = 'password') => {
     validateRequiredString(email, 'username');
     validateRequiredString(password, 'password');
@@ -585,18 +596,38 @@ export const registerUser = async (userData) => {
     return response;
 };
 
-export const uploadXrayImage = async (imageUri, fileOptions = {}) => {
+export const uploadXrayImage = async (imageUri, fileOptions = {}, requestOptions = {}) => {
     validateRequiredString(imageUri, 'file');
 
-    const formData = new FormData();
-    formData.append('file', buildMultipartFile(imageUri, fileOptions));
+    const timeout = Number.isFinite(requestOptions.timeout) ? requestOptions.timeout : 45000;
+    const retries = Number.isInteger(requestOptions.retries) ? requestOptions.retries : 1;
 
-    return request('/api/v1/upload/', {
-        method: 'POST',
-        body: formData,
-    }, {
-        auth: true,
-    });
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try {
+            const formData = new FormData();
+            formData.append('file', buildMultipartFile(imageUri, fileOptions));
+
+            return await request('/api/v1/upload/', {
+                method: 'POST',
+                body: formData,
+            }, {
+                auth: true,
+                timeout,
+            });
+        } catch (error) {
+            lastError = error;
+
+            if (attempt >= retries || !isRetryableUploadError(error)) {
+                throw error;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        }
+    }
+
+    throw lastError;
 };
 
 export const analyzeUploadedXray = async (imageId, painLevel = null, mobilityLevel = null) => {

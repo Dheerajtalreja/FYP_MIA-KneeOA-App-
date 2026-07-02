@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -21,8 +21,54 @@ const ImageCaptureScreen = ({ navigation, route }) => {
     const [kneeSide, setKneeSide] = useState('left');
     const questionnaireId = route.params?.questionnaireId;
     const clinicalProfile = route.params?.clinicalProfile;
+    const isMountedRef = useRef(true);
+    const inFlightRef = useRef(false);
+
+    const setAnalyzingIfMounted = (value) => {
+        if (isMountedRef.current) {
+            setAnalyzing(value);
+        }
+    };
+
+    const navigateToResult = (params) => {
+        if (isMountedRef.current) {
+            navigation.navigate('Result', params);
+        }
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const restorePendingPickerResult = async () => {
+            try {
+                // FIX: Recover Android picker results if the activity is recreated mid-pick.
+                const pendingResult = await ImagePicker.getPendingResultAsync();
+                if (cancelled || !pendingResult || pendingResult.canceled || !pendingResult.assets?.[0]) {
+                    return;
+                }
+
+                const asset = pendingResult.assets[0];
+                setImageUri(asset.uri);
+                setSelectedAsset(asset);
+            } catch (error) {
+                console.warn('[ImageCaptureScreen] Failed to restore pending picker result:', error);
+            }
+        };
+
+        restorePendingPickerResult();
+
+        return () => {
+            cancelled = true;
+            isMountedRef.current = false;
+            inFlightRef.current = false;
+        };
+    }, []);
 
     const pickImage = async (source) => {
+        if (analyzing || inFlightRef.current) {
+            return;
+        }
+
         try {
             const permission =
                 source === 'camera'
@@ -42,17 +88,19 @@ const ImageCaptureScreen = ({ navigation, route }) => {
             const result =
                 source === 'camera'
                     ? await ImagePicker.launchCameraAsync({
-                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          // FIX: Expo SDK 52 prefers MediaType strings over the deprecated MediaTypeOptions enum.
+                          mediaTypes: ['images'],
                           quality: 0.9,
                           allowsEditing: false,
                       })
                     : await ImagePicker.launchImageLibraryAsync({
-                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          // FIX: Expo SDK 52 prefers MediaType strings over the deprecated MediaTypeOptions enum.
+                          mediaTypes: ['images'],
                           quality: 0.9,
                           allowsEditing: false,
                       });
 
-            if (!result.canceled && result.assets?.[0]) {
+            if (isMountedRef.current && !result.canceled && result.assets?.[0]) {
                 const asset = result.assets[0];
                 setImageUri(asset.uri);
                 setSelectedAsset(asset);
@@ -75,8 +123,10 @@ const ImageCaptureScreen = ({ navigation, route }) => {
     };
 
     const handleAnalyze = async () => {
-        if (!imageUri) return;
-        setAnalyzing(true);
+        if (!imageUri || analyzing || inFlightRef.current) return;
+
+        inFlightRef.current = true;
+        setAnalyzingIfMounted(true);
 
         try {
             let currentUser;
@@ -84,12 +134,12 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 currentUser = await getUser();
             } catch (dbError) {
                 console.error('[ImageCaptureScreen] Failed to get user:', dbError);
+                if (!isMountedRef.current) return;
                 Alert.alert(
                     'Database Error',
                     'Unable to access local database. Please restart the app.',
                     [{ text: 'OK', onPress: () => navigation.goBack() }]
                 );
-                setAnalyzing(false);
                 return;
             }
 
@@ -106,12 +156,12 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 const uploadMessage =
                     uploadError?.message ||
                     'Unable to upload image. Please check your connection.';
+                if (!isMountedRef.current) return;
                 Alert.alert(
                     'Upload Failed',
                     uploadMessage,
                     [{ text: 'Try Again', onPress: () => handleAnalyze() }]
                 );
-                setAnalyzing(false);
                 return;
             }
             
@@ -152,6 +202,7 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 });
             } catch (saveError) {
                 console.error('[ImageCaptureScreen] Failed to save scan:', saveError);
+                if (!isMountedRef.current) return;
                 Alert.alert(
                     'Save Failed',
                     'Unable to save scan results locally. Proceeding without local backup.',
@@ -164,7 +215,7 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                         analysis: normalizedResult,
                     }) }]
                 );
-                navigation.navigate('Result', {
+                navigateToResult({
                     imageUri,
                     kneeSide,
                     scanId: null,
@@ -172,11 +223,10 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                     clinicalProfile,
                     analysis: normalizedResult,
                 });
-                setAnalyzing(false);
                 return;
             }
 
-            navigation.navigate('Result', {
+            navigateToResult({
                 imageUri,
                 kneeSide,
                 scanId,
@@ -204,8 +254,8 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 currentUser = await getUser();
             } catch (dbError) {
                 console.error('[ImageCaptureScreen] Failed to get user in error handler:', dbError);
+                if (!isMountedRef.current) return;
                 Alert.alert('Database Error', 'Unable to access local database.');
-                setAnalyzing(false);
                 return;
             }
             
@@ -236,7 +286,7 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 });
             } catch (saveError) {
                 console.error('[ImageCaptureScreen] Failed to save fallback scan:', saveError);
-                navigation.navigate('Result', {
+                navigateToResult({
                     imageUri,
                     kneeSide,
                     scanId: null,
@@ -246,7 +296,8 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 });
             }
         } finally {
-            setAnalyzing(false);
+            inFlightRef.current = false;
+            setAnalyzingIfMounted(false);
         }
     };
 
@@ -289,7 +340,7 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 <TouchableOpacity
                     style={styles.imageContainer}
                     onPress={handleSelectImage}
-                    disabled={analyzing}
+                    disabled={analyzing || inFlightRef.current}
                 >
                     {imageUri ? (
                         <Image source={{ uri: imageUri }} style={styles.previewImage} />
@@ -307,7 +358,11 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 </TouchableOpacity>
 
                 {imageUri && (
-                    <TouchableOpacity style={styles.retakeBtn} onPress={handleSelectImage}>
+                    <TouchableOpacity
+                        style={styles.retakeBtn}
+                        onPress={handleSelectImage}
+                        disabled={analyzing || inFlightRef.current}
+                    >
                         <Text style={styles.retakeBtnText}>Retake Image</Text>
                     </TouchableOpacity>
                 )}
@@ -317,7 +372,7 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                 <TouchableOpacity
                     style={[styles.analyzeBtnWrapper, !imageUri && { opacity: 0.5 }]}
                     onPress={handleAnalyze}
-                    disabled={!imageUri || analyzing}
+                    disabled={!imageUri || analyzing || inFlightRef.current}
                 >
                     <LinearGradient
                         colors={COLORS.primaryGradient}
@@ -331,6 +386,17 @@ const ImageCaptureScreen = ({ navigation, route }) => {
                     </LinearGradient>
                 </TouchableOpacity>
             </View>
+
+            {analyzing && (
+                <View style={styles.loadingOverlay} pointerEvents="auto">
+                    <View style={styles.loadingCard}>
+                        <Text style={styles.loadingTitle}>Analyzing X-Ray</Text>
+                        <Text style={styles.loadingSubtitle}>
+                            Uploading and scoring the image securely. Please keep this screen open.
+                        </Text>
+                    </View>
+                </View>
+            )}
         </View>
     );
 };
@@ -454,6 +520,35 @@ const styles = StyleSheet.create({
         color: COLORS.textPrimary,
         fontSize: 18,
         fontWeight: 'bold',
+    },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(15, 25, 35, 0.72)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    loadingCard: {
+        width: '100%',
+        maxWidth: 320,
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusLg,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    loadingTitle: {
+        color: COLORS.textPrimary,
+        fontSize: 18,
+        fontWeight: '700',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    loadingSubtitle: {
+        color: COLORS.textSecondary,
+        fontSize: 14,
+        lineHeight: 20,
+        textAlign: 'center',
     },
 });
 
