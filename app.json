@@ -53,6 +53,8 @@
         }
       ],
       "expo-asset",
+      "expo-file-system",
+      "expo-dev-client",
       [
         "expo-build-properties",
         {
