@@ -10,6 +10,7 @@ import {
     ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../contexts/AuthContext';
 import { fetchProfile, fetchReports } from '../services/api';
 import { getDatabase, getUser } from '../services/database';
 
@@ -87,9 +88,11 @@ const safeParseJson = (value) => {
 };
 
 const HomeScreen = ({ navigation }) => {
+    const { logout } = useAuth();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
-    const cardAnims = FEATURES.map(() => useRef(new Animated.Value(0)).current);
+    // FIX: Keep animation values inside one stable ref so hook count never depends on FEATURES length.
+    const cardAnims = useRef(FEATURES.map(() => new Animated.Value(0))).current;
     const [stats, setStats] = useState(DEFAULT_STATS);
     const [activities, setActivities] = useState([]);
     const [userName, setUserName] = useState('Dr. User');
@@ -222,8 +225,13 @@ const HomeScreen = ({ navigation }) => {
         return unsubscribe;
     }, [cardAnims, fadeAnim, loadDashboardData, navigation, slideAnim]);
 
-    const handleLogout = () => {
-        navigation.replace('Login');
+    const handleLogout = async () => {
+        // FIX: Clear the real auth session before routing so the app cannot restore a stale login state.
+        await logout?.();
+        navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+        });
     };
 
     return (

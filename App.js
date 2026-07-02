@@ -87,8 +87,6 @@ const DEEP_LINK_PREFIX = 'https://kneeoa.online/';
  * This component is a child of NavigationContainer so it can access navigation state.
  */
 function NavigationHandler({ navigationRef, authReadyRef, pendingLinkRef }) {
-    const isNavigationReady = useRef(false);
-
     useEffect(() => {
         const handleDeepLink = async (url) => {
             try {
@@ -147,25 +145,6 @@ function NavigationHandler({ navigationRef, authReadyRef, pendingLinkRef }) {
         return () => subscription.remove();
     }, [navigationRef, authReadyRef, pendingLinkRef]);
 
-    // Monitor navigation readiness
-    useEffect(() => {
-        const checkNavigationReady = () => {
-            if (navigationRef?.isReady()) {
-                isNavigationReady.current = true;
-
-                // Process any pending links if auth is also ready
-                if (pendingLinkRef.current && authReadyRef.current) {
-                    const { resetToken } = pendingLinkRef.current;
-                    navigationRef.navigate('ResetPassword', { resetToken });
-                    pendingLinkRef.current = null;
-                }
-            }
-        };
-
-        const pollInterval = setInterval(checkNavigationReady, 100);
-        return () => clearInterval(pollInterval);
-    }, [navigationRef, authReadyRef, pendingLinkRef]);
-
     return null;
 }
 
@@ -181,18 +160,22 @@ function AppNavigator() {
     const authReadyRef = useRef(false);
     const pendingLinkRef = useRef(null);
 
+    const flushPendingLink = () => {
+        // FIX: Resolve deferred deep links only when the navigation container is ready, instead of polling.
+        if (navigationRef?.isReady() && authReadyRef.current && pendingLinkRef.current) {
+            const { resetToken } = pendingLinkRef.current;
+            navigationRef.navigate('ResetPassword', { resetToken });
+            pendingLinkRef.current = null;
+        }
+    };
+
     // Update authReadyRef when AuthContext signals readiness
     useEffect(() => {
         if (authReady && !authReadyRef.current) {
             console.log('[AppNavigator] AuthContext is now READY');
             authReadyRef.current = true;
-            
-            // Process any pending deep links now that auth is ready
-            if (navigationRef?.isReady() && pendingLinkRef.current) {
-                const { resetToken } = pendingLinkRef.current;
-                navigationRef.navigate('ResetPassword', { resetToken });
-                pendingLinkRef.current = null;
-            }
+
+            flushPendingLink();
         }
     }, [authReady, navigationRef]);
 
@@ -207,7 +190,10 @@ function AppNavigator() {
                     },
                 },
             }}
-            onReady={() => console.log('Navigation ready')}
+            onReady={() => {
+                console.log('Navigation ready');
+                flushPendingLink();
+            }}
             onStateChange={(state) => {
                 // Useful for debugging navigation issues
                 console.log('[Navigation] State changed');
