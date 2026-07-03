@@ -118,23 +118,6 @@ export const performPullSync = async (userId) => {
     }
 };
 
-// Save recommendation record to local database
-const saveRecommendation = async (recData) => {
-    const database = await getDatabase();
-    const result = await database.runAsync(
-        `INSERT OR REPLACE INTO recommendations (user_id, scan_id, recommendation_text, exercises, lifestyle_tips)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-            recData.userId,
-            recData.scanId || null,
-            recData.recommendationText || '',
-            JSON.stringify(recData.exercises || []),
-            JSON.stringify(recData.lifestyleTips || []),
-        ]
-    );
-    return result.lastInsertRowId;
-};
-
 // Log sync events for debugging and status display
 const logSyncEvent = async (eventType, status, errorMessage = null, details = null) => {
     const database = await getDatabase();
