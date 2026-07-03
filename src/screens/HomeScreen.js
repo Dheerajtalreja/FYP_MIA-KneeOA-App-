@@ -8,11 +8,13 @@ import {
     Animated,
     Dimensions,
     ScrollView,
+    ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchProfile, fetchReports } from '../services/api';
 import { getDatabase, getUser } from '../services/database';
+import { getLastSyncTime, getSyncStats, performPullSync } from '../services/pullSync';
 
 const { width } = Dimensions.get('window');
 
@@ -96,6 +98,7 @@ const HomeScreen = ({ navigation }) => {
     const [stats, setStats] = useState(DEFAULT_STATS);
     const [activities, setActivities] = useState([]);
     const [userName, setUserName] = useState('Dr. User');
+    const [syncInfo, setSyncInfo] = useState({ lastSyncTime: null, totalRecords: 0, isSyncing: false });
 
     const loadDashboardData = useCallback(async () => {
         try {
@@ -181,6 +184,21 @@ const HomeScreen = ({ navigation }) => {
                           },
                       ]
             );
+
+            // Load sync info
+            try {
+                const lastSyncTime = await getLastSyncTime();
+                const syncStats = await getSyncStats(userKey);
+                setSyncInfo({
+                    lastSyncTime: lastSyncTime,
+                    totalRecords: syncStats.totalCount,
+                    isSyncing: false,
+                });
+            } catch (syncError) {
+                console.warn('[HomeScreen] Failed to load sync info:', syncError);
+                setSyncInfo({ lastSyncTime: null, totalRecords: 0, isSyncing: false });
+            }
+
         } catch (error) {
             setStats(DEFAULT_STATS);
             setActivities([
@@ -191,6 +209,33 @@ const HomeScreen = ({ navigation }) => {
             ]);
         }
     }, []);
+
+    const handleManualSync = async () => {
+        try {
+            setSyncInfo((prev) => ({ ...prev, isSyncing: true }));
+            const user = await getUser();
+            const userId = user?.server_id || user?.email || user?.id || 'current_user';
+            
+            const syncResult = await performPullSync(userId);
+            
+            if (syncResult.success) {
+                const lastSyncTime = await getLastSyncTime();
+                const syncStats = await getSyncStats(userId);
+                setSyncInfo({
+                    lastSyncTime: lastSyncTime,
+                    totalRecords: syncStats.totalCount,
+                    isSyncing: false,
+                });
+                console.log('[HomeScreen] Manual sync completed:', syncResult);
+            } else {
+                setSyncInfo((prev) => ({ ...prev, isSyncing: false }));
+                console.warn('[HomeScreen] Manual sync failed:', syncResult.error);
+            }
+        } catch (error) {
+            setSyncInfo((prev) => ({ ...prev, isSyncing: false }));
+            console.error('[HomeScreen] Manual sync error:', error);
+        }
+    };
 
     useEffect(() => {
         // Header animation
@@ -370,6 +415,40 @@ const HomeScreen = ({ navigation }) => {
                         </View>
                     </View>
                 ))}
+
+                {/* Sync Status Card */}
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Data Sync</Text>
+                </View>
+                <View style={styles.syncStatusCard}>
+                    <View style={styles.syncStatusRow}>
+                        <View style={styles.syncStatusLeft}>
+                            <Text style={styles.syncStatusIcon}>☁️</Text>
+                            <View style={styles.syncStatusTextContainer}>
+                                <Text style={styles.syncStatusTitle}>Cloud Sync Status</Text>
+                                <Text style={styles.syncStatusSubtitle}>
+                                    {syncInfo.lastSyncTime
+                                        ? `Last synced ${formatTimeAgo(syncInfo.lastSyncTime)}`
+                                        : 'Never synced'}
+                                </Text>
+                                <Text style={styles.syncRecordCount}>
+                                    {syncInfo.totalRecords} record{syncInfo.totalRecords !== 1 ? 's' : ''} synced
+                                </Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity
+                            style={[styles.syncRefreshButton, syncInfo.isSyncing && styles.syncRefreshButtonDisabled]}
+                            onPress={handleManualSync}
+                            disabled={syncInfo.isSyncing}
+                        >
+                            {syncInfo.isSyncing ? (
+                                <ActivityIndicator size="small" color="#00D2FF" />
+                            ) : (
+                                <Text style={styles.syncRefreshIcon}>🔄</Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
 
                 {/* Bottom Spacer */}
                 <View style={{ height: 30 }} />
@@ -596,6 +675,62 @@ const styles = StyleSheet.create({
     activityArrow: {
         fontSize: 16,
         color: 'rgba(255,255,255,0.3)',
+    },
+    syncStatusCard: {
+        backgroundColor: '#1a2a3a',
+        borderRadius: 14,
+        padding: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: '#2a3a4a',
+    },
+    syncStatusRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    syncStatusLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    syncStatusIcon: {
+        fontSize: 28,
+        marginRight: 12,
+    },
+    syncStatusTextContainer: {
+        flex: 1,
+    },
+    syncStatusTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
+    },
+    syncStatusSubtitle: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.5)',
+        marginTop: 2,
+    },
+    syncRecordCount: {
+        fontSize: 11,
+        color: '#00D2FF',
+        marginTop: 4,
+        fontWeight: '500',
+    },
+    syncRefreshButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,210,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 12,
+    },
+    syncRefreshButtonDisabled: {
+        opacity: 0.6,
+    },
+    syncRefreshIcon: {
+        fontSize: 18,
     },
     bottomNav: {
         flexDirection: 'row',

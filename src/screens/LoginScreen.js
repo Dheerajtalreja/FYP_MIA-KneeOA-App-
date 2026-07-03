@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
 import { setAuthToken, setRefreshToken, getProfile } from '../services/api';
 import { saveUser, getLatestQuestionnaire } from '../services/database';
+import { performPullSync } from '../services/pullSync';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = 220; // Fixed height taaki flicker na ho
@@ -143,6 +144,18 @@ const LoginScreen = ({ navigation }) => {
                 role: currentUser?.role || 'patient',
                 profile: currentUser || { authenticated: true },
             });
+
+            // FEATURE: Trigger pull sync in background to populate local database
+            // This is non-blocking - doesn't wait for sync to complete before navigation
+            if (userId) {
+                performPullSync(userId)
+                    .then((syncResult) => {
+                        console.log('[LoginScreen] Pull sync completed:', syncResult);
+                    })
+                    .catch((syncError) => {
+                        console.warn('[LoginScreen] Pull sync failed (non-blocking):', syncError);
+                    });
+            }
 
             // CRITICAL: Check if user has completed their medical profile
             if (userId) {

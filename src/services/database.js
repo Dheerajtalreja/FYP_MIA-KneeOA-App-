@@ -296,6 +296,17 @@ export const saveCompleteUserProfile = async (completeProfile) => {
     } catch (e) { console.error(e); throw e; }
 };
 
+export const saveRecommendation = async (recData) => {
+    if (isWeb) return 1;
+    const database = await getDatabase();
+    const result = await database.runAsync(
+        `INSERT OR REPLACE INTO recommendations (user_id, scan_id, recommendation_text, exercises, lifestyle_tips)
+         VALUES (?, ?, ?, ?, ?)`,
+        [recData.userId, recData.scanId || null, recData.recommendationText || '', JSON.stringify(recData.exercises || []), JSON.stringify(recData.lifestyleTips || [])]
+    );
+    return result.lastInsertRowId;
+};
+
 export const getVideoLibrary = async (category = null) => {
     if (isWeb) return [];
     const database = await getDatabase();
