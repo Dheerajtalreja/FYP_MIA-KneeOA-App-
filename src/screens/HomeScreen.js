@@ -29,9 +29,9 @@ const FEATURES = [
         id: '2',
         icon: '🤖',
         title: 'AI Analysis',
-        subtitle: 'Deep learning powered OA grading',
+        subtitle: 'Complete your profile for AI insights',
         gradient: ['#6C63FF', '#3A7BD5'],
-        route: 'ImageCapture',
+        route: 'Questionnaire',
     },
     {
         id: '3',
@@ -45,9 +45,9 @@ const FEATURES = [
         id: '4',
         icon: '📋',
         title: 'KL Grading',
-        subtitle: 'Kellgren-Lawrence classification',
+        subtitle: 'Review knee grade history and findings',
         gradient: ['#f093fb', '#f5576c'],
-        route: 'ImageCapture',
+        route: 'History',
     },
 ];
 

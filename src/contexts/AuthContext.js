@@ -126,6 +126,7 @@ export const AuthProvider = ({ children }) => {
             };
         } catch (error) {
             console.error('[AuthContext] Login failed:', error);
+            // Re-throw the error with its message intact
             throw error;
         }
     }, []);

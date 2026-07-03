@@ -1,5 +1,4 @@
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,6 +7,7 @@ import {
     ScrollView,
     Platform,
 } from 'react-native';
+import { Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES } from '../config/theme';
 import DisclaimerBanner from '../components/DisclaimerBanner';
@@ -21,7 +21,9 @@ const DEFAULT_VIDEOS = [
 const RecommendationsScreen = ({ navigation, route }) => {
     const [recommendation, setRecommendation] = useState(null);
     const [videos, setVideos] = useState(DEFAULT_VIDEOS);
+    const [selectedVideo, setSelectedVideo] = useState(null);
     const [loading, setLoading] = useState(true);
+    const videoRef = useRef(null);
 
     const scanId = route.params?.scanId;
     const questionnaireId = route.params?.questionnaireId;
@@ -63,7 +65,16 @@ const RecommendationsScreen = ({ navigation, route }) => {
                         setVideos(
                             normalizedVideos.map((item, index) => ({
                                 id: item.video_id || item.id || index + 1,
-                                title: item.title || 'Exercise',
+                                title: item.title || item.name || 'Exercise',
+                                url:
+                                    item.video_url ||
+                                    item.videoUrl ||
+                                    item.url ||
+                                    item.signed_url ||
+                                    item.presigned_url ||
+                                    item.media_url ||
+                                    item.source ||
+                                    null,
                                 time: item.duration_seconds ? `${Math.round(item.duration_seconds / 60)} mins` : '5 mins',
                                 difficulty: item.difficulty || 'Easy',
                                 icon: item.icon || '▶',
@@ -150,8 +161,31 @@ const RecommendationsScreen = ({ navigation, route }) => {
                     <Text style={styles.sectionTitle}>Rehabilitation Exercises</Text>
                     <Text style={styles.subSubtitle}>Tailored for your recent scan analysis</Text>
                     
-                    {videos.map(v => (
-                        <TouchableOpacity key={v.id} style={styles.videoCard}>
+                    {selectedVideo && (
+                    <View style={styles.playerSection}>
+                        <Text style={styles.sectionTitle}>Now Playing</Text>
+                        {selectedVideo.url ? (
+                            <Video
+                                ref={videoRef}
+                                style={styles.videoPlayer}
+                                source={{ uri: selectedVideo.url }}
+                                useNativeControls
+                                resizeMode="contain"
+                                shouldPlay
+                                onError={({ nativeEvent }) => {
+                                    console.error('[RecommendationsScreen] Video playback error', nativeEvent);
+                                }}
+                            />
+                        ) : (
+                            <View style={styles.videoUnavailable}>
+                                <Text style={styles.listText}>Video URL unavailable. Tap another exercise or refresh the library.</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {videos.map(v => (
+                        <TouchableOpacity key={v.id} style={styles.videoCard} onPress={() => setSelectedVideo(v)}>
                             <View style={styles.videoThumbnail}>
                                 <Text style={styles.videoIcon}>{v.icon}</Text>
                                 <View style={styles.playOverlay}>
@@ -165,6 +199,11 @@ const RecommendationsScreen = ({ navigation, route }) => {
                                     <Text style={styles.metaText}>•</Text>
                                     <Text style={styles.metaText}>💪 {v.difficulty}</Text>
                                 </View>
+                                {v.url ? (
+                                    <Text style={styles.urlHint}>Tap to play video</Text>
+                                ) : (
+                                    <Text style={styles.urlHint}>No playback URL available</Text>
+                                )}
                             </View>
                         </TouchableOpacity>
                     ))}
@@ -284,9 +323,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
     },
-    metaText: {
+    urlHint: {
+        marginTop: 8,
         color: COLORS.textSecondary,
         fontSize: 12,
+    },
+    playerSection: {
+        marginBottom: 20,
+    },
+    videoPlayer: {
+        width: '100%',
+        height: 220,
+        borderRadius: SIZES.radiusMd,
+        backgroundColor: '#000',
+    },
+    videoUnavailable: {
+        padding: 16,
+        borderRadius: SIZES.radiusMd,
+        backgroundColor: COLORS.surfaceLight,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
 });
 

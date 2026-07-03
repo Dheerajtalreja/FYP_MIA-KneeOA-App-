@@ -178,7 +178,34 @@ const LoginScreen = ({ navigation }) => {
                 return;
             }
 
-            const errorMessage = error.message || 'Unable to sign in. Please check your credentials and connection.';
+            // 🔍 Extract error message from multiple possible sources
+            let errorMessage = 'Unable to sign in. Please check your credentials and connection.';
+            
+            // Try to extract from error.message first (set by mapErrorResponse)
+            if (error?.message && typeof error.message === 'string' && error.message.trim()) {
+                errorMessage = error.message.trim();
+                console.log('[LoginScreen] Using error.message:', errorMessage);
+            }
+            // Try backend response detail
+            else if (error?.raw?.detail && typeof error.raw.detail === 'string') {
+                errorMessage = error.raw.detail.trim();
+                console.log('[LoginScreen] Using error.raw.detail:', errorMessage);
+            }
+            // Try backend response message
+            else if (error?.raw?.message && typeof error.raw.message === 'string') {
+                errorMessage = error.raw.message.trim();
+                console.log('[LoginScreen] Using error.raw.message:', errorMessage);
+            }
+            // Try field errors
+            else if (error?.fieldErrors && typeof error.fieldErrors === 'object') {
+                const errors = Object.values(error.fieldErrors).filter(msg => msg);
+                if (errors.length > 0) {
+                    errorMessage = errors.join(' ');
+                    console.log('[LoginScreen] Using field errors:', errorMessage);
+                }
+            }
+            
+            console.log('[LoginScreen] Final error message:', errorMessage);
             Alert.alert('Sign In Error', errorMessage);
         } finally {
             setLoading(false);

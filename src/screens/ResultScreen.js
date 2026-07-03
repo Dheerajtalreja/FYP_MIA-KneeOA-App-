@@ -19,6 +19,14 @@ const ResultScreen = ({ navigation, route }) => {
     const normalizedGrade = Number.isFinite(Number(grade)) ? Number(grade) : null;
     const gradeColor = normalizedGrade !== null ? getKLGradeColor(normalizedGrade) : COLORS.textMuted;
     const hasValidGrade = normalizedGrade !== null;
+    const medications = Array.isArray(analysis?.medications) ? analysis.medications : [];
+
+    const formatMedicationValue = (value) => {
+        if (value === null || value === undefined || String(value).trim().length === 0) {
+            return '-';
+        }
+        return String(value);
+    };
 
     return (
         <View style={styles.container}>
@@ -79,13 +87,33 @@ const ResultScreen = ({ navigation, route }) => {
                     ) : null}
                 </View>
 
-                <DisclaimerBanner />
+                <View style={styles.medicationSection}>
+                    <Text style={styles.sectionTitle}>Recommended Medications</Text>
+                    <View style={styles.card}>
+                        {medications.length === 0 ? (
+                            <Text style={styles.emptyText}>No medications recommended.</Text>
+                        ) : (
+                            medications.map((medication) => (
+                                <View key={medication?.id ?? String(Math.random())} style={styles.medicationCard}>
+                                    <Text style={styles.medicationTitle}>💊 {formatMedicationValue(medication?.name)}</Text>
+                                    <Text style={styles.medicationLabel}>Dosage</Text>
+                                    <Text style={styles.medicationValue}>{formatMedicationValue(medication?.dosage)}</Text>
+                                    <Text style={styles.medicationLabel}>Frequency</Text>
+                                    <Text style={styles.medicationValue}>{formatMedicationValue(medication?.frequency)}</Text>
+                                    <Text style={styles.medicationLabel}>Instructions</Text>
+                                    <Text style={styles.medicationValue}>{formatMedicationValue(medication?.instructions)}</Text>
+                                    <Text style={styles.medicationLabel}>Contraindications</Text>
+                                    <Text style={styles.medicationValue}>{formatMedicationValue(medication?.contraindications)}</Text>
+                                </View>
+                            ))
+                        )}
+                    </View>
+                </View>
 
                 <View style={styles.actionContainer}>
                     <TouchableOpacity
                         style={styles.actionBtnWrapper}
                         onPress={() => navigation.navigate('Recommendations', {
-                            grade,
                             scanId,
                             questionnaireId,
                             clinicalProfile,
@@ -180,6 +208,20 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
         marginBottom: 16,
     },
+    sectionTitle: {
+        color: COLORS.textSecondary,
+        fontSize: 14,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        marginBottom: 12,
+    },
+    card: {
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusLg,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
     gradeRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -239,6 +281,50 @@ const styles = StyleSheet.create({
         color: COLORS.textPrimary,
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    medicationSection: {
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusLg,
+        padding: 20,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    medicationCard: {
+        backgroundColor: COLORS.background,
+        borderRadius: SIZES.radiusMd,
+        padding: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    medicationTitle: {
+        color: COLORS.textPrimary,
+        fontSize: 16,
+        fontWeight: '700',
+        marginBottom: 10,
+    },
+    medicationLabel: {
+        color: COLORS.textSecondary,
+        fontSize: 13,
+        fontWeight: '600',
+        marginTop: 10,
+    },
+    medicationValue: {
+        color: COLORS.textPrimary,
+        fontSize: 15,
+        marginTop: 4,
+        lineHeight: 22,
+    },
+    emptyText: {
+        color: COLORS.textSecondary,
+        fontSize: 15,
+        lineHeight: 22,
     },
 });
 

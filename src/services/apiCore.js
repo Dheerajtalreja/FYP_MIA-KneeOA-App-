@@ -184,9 +184,19 @@ const genericMessageForStatus = (status) => {
 const mapErrorResponse = async (response) => {
     const payload = await parseResponseBody(response).catch(() => null);
 
+    // 🔍 DEBUG: Log response details for troubleshooting
+    console.log(`[mapErrorResponse] Status: ${response.status}, Payload:`, payload);
+
+    // Extract backend error message from payload first
+    const backendMessage = extractErrorMessage(payload);
+    console.log(`[mapErrorResponse] Extracted backend message: "${backendMessage}"`);
+
     if (response.status === 401) {
         clearAuthTokens();
-        const error = new UnauthorizedError(null, { status: 401 });
+        // Use backend message if available, otherwise use default
+        const message = backendMessage || 'Your session expired. Please sign in again.';
+        console.log(`[mapErrorResponse] 401 error message: "${message}"`);
+        const error = new UnauthorizedError(message, { status: 401 });
         if (sessionExpiredHandler) {
             sessionExpiredHandler(error);
         }
@@ -194,16 +204,22 @@ const mapErrorResponse = async (response) => {
     }
 
     if (response.status === 403) {
-        return new ForbiddenError(null, { status: 403 });
+        const message = backendMessage || 'You do not have access to this resource.';
+        console.log(`[mapErrorResponse] 403 error message: "${message}"`);
+        return new ForbiddenError(message, { status: 403 });
     }
 
     if (response.status === 404) {
-        return new NotFoundError(null, { status: 404 });
+        const message = backendMessage || 'Requested resource was not found.';
+        console.log(`[mapErrorResponse] 404 error message: "${message}"`);
+        return new NotFoundError(message, { status: 404 });
     }
 
     if (response.status === 422) {
         const detail = Array.isArray(payload?.detail) ? payload.detail : [];
-        return new ValidationError(genericMessageForStatus(422), {
+        const message = backendMessage || genericMessageForStatus(422);
+        console.log(`[mapErrorResponse] 422 validation error message: "${message}"`);
+        return new ValidationError(message, {
             status: 422,
             details: detail,
             fieldErrors: buildFieldErrors(detail),
@@ -212,7 +228,9 @@ const mapErrorResponse = async (response) => {
     }
 
     const details = payload && typeof payload === 'object' ? payload : null;
-    return new ApiError(genericMessageForStatus(response.status), {
+    const message = backendMessage || genericMessageForStatus(response.status);
+    console.log(`[mapErrorResponse] ${response.status} error message: "${message}"`);
+    return new ApiError(message, {
         status: response.status,
         details,
         raw: payload,
@@ -342,14 +360,19 @@ const request = async (path, options = {}, { auth = false, timeout = 15000 } = {
 
     try {
         const url = buildApiUrl(normalizePath(path));
+        console.log(`[request] Calling ${options.method || 'GET'} ${url}`);
+        
         const response = await fetch(url, {
             ...options,
             headers: nextHeaders,
             signal: controller.signal,
         });
 
+        console.log(`[request] Response status: ${response.status} for ${options.method || 'GET'} ${url}`);
         return await handleResponse(response, { ...options, headers: nextHeaders, url });
     } catch (error) {
+        console.error(`[request] Error during request to ${path}:`, error);
+        
         if (error.name === 'AbortError') {
             throw new ApiError('Request timed out. Please check your internet connection.', { status: 408, code: 'timeout' });
         }
