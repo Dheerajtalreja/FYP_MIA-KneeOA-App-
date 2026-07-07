@@ -60,6 +60,7 @@ const RegisterScreen = ({ navigation }) => {
             headerFade.stopAnimation();
             formSlide.stopAnimation();
             formFade.stopAnimation();
+            buttonScale.stopAnimation();
         };
     }, []);
 
@@ -75,13 +76,6 @@ const RegisterScreen = ({ navigation }) => {
         }
 
         setLoading(true);
-
-        // CRITICAL: Cleanup button animation on unmount
-        useEffect(() => {
-            return () => {
-                buttonScale.stopAnimation();
-            };
-        }, []);
 
         Animated.sequence([
             Animated.timing(buttonScale, {

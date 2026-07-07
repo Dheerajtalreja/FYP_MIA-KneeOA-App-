@@ -80,10 +80,16 @@ const ResultScreen = ({ navigation, route }) => {
                     <Text style={styles.analysisDetails}>
                         {analysis?.diagnosisSummary || analysis?.details || 'No further details available.'}
                     </Text>
-                    {analysis?.recommendation ? (
-                        <Text style={[styles.analysisDetails, { marginTop: 12 }]}>
-                            {analysis.recommendation}
-                        </Text>
+
+                    {(analysis?.recommendation || analysis?.recommendation_text || analysis?.recommendationText) ? (
+                        <View style={styles.recommendationContainer}>
+                            <Text style={styles.recommendationHeader}>Recommendation</Text>
+                            <View style={styles.recommendationBox}>
+                                <Text style={styles.recommendationText}>
+                                    {analysis.recommendation || analysis.recommendation_text || analysis.recommendationText}
+                                </Text>
+                            </View>
+                        </View>
                     ) : null}
                 </View>
 
@@ -281,6 +287,31 @@ const styles = StyleSheet.create({
         color: COLORS.textPrimary,
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    recommendationContainer: {
+        marginTop: 18,
+    },
+    recommendationHeader: {
+        color: COLORS.primary,
+        fontSize: 14,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+        marginBottom: 10,
+        textTransform: 'uppercase',
+    },
+    recommendationBox: {
+        backgroundColor: 'rgba(0, 210, 255, 0.08)',
+        borderRadius: SIZES.radiusMd,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 210, 255, 0.18)',
+        ...SHADOWS.small,
+    },
+    recommendationText: {
+        color: COLORS.textPrimary,
+        fontSize: 15,
+        fontWeight: '700',
+        lineHeight: 24,
     },
     medicationSection: {
         backgroundColor: COLORS.surface,

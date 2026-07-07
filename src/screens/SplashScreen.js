@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { hydrateAuthState } from '../services/api';
 import { getUser, getLatestQuestionnaire } from '../services/database';
+import { COLORS } from '../config/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -160,7 +161,7 @@ const SplashScreen = ({ navigation }) => {
 
     return (
         <LinearGradient
-            colors={['#0F2027', '#203A43', '#2C5364']}
+            colors={COLORS.headerGradient}
             style={styles.container}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -194,7 +195,7 @@ const SplashScreen = ({ navigation }) => {
 
                 {/* Logo circle with gradient border */}
                 <LinearGradient
-                    colors={['#00D2FF', '#3A7BD5', '#6C63FF']}
+                    colors={COLORS.fullPrimaryGradient}
                     style={styles.logoBorder}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -208,7 +209,7 @@ const SplashScreen = ({ navigation }) => {
             <Animated.View style={{ opacity: fadeAnim }}>
                 <Text style={styles.appName}>KneeOA Engine</Text>
                 <LinearGradient
-                    colors={['#00D2FF', '#6C63FF']}
+                    colors={[COLORS.primary, COLORS.accent]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.titleUnderline}
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
         width: 122,
         height: 122,
         borderRadius: 61,
-        backgroundColor: '#1a2a3a',
+        backgroundColor: COLORS.surface,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -305,7 +306,7 @@ const styles = StyleSheet.create({
     appName: {
         fontSize: 44,
         fontWeight: '800',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
         letterSpacing: 4,
         textAlign: 'center',
     },
@@ -318,14 +319,14 @@ const styles = StyleSheet.create({
     },
     tagline: {
         fontSize: 18,
-        color: '#00D2FF',
+        color: COLORS.primary,
         marginTop: 16,
         fontWeight: '600',
         letterSpacing: 1,
     },
     subtitleSmall: {
         fontSize: 13,
-        color: 'rgba(255,255,255,0.5)',
+        color: COLORS.textSecondary,
         marginTop: 8,
         letterSpacing: 0.5,
     },
@@ -338,7 +339,7 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#00D2FF',
+        backgroundColor: COLORS.primary,
     },
     versionText: {
         position: 'absolute',

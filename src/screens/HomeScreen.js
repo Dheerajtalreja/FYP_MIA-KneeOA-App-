@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchProfile, fetchReports } from '../services/api';
 import { getDatabase, getUser } from '../services/database';
 import { getLastSyncTime, getSyncStats, performPullSync } from '../services/pullSync';
+import { COLORS, SIZES, SHADOWS } from '../config/theme';
 
 const { width } = Dimensions.get('window');
 
@@ -281,11 +282,11 @@ const HomeScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#0F2027" />
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.gradientStart} />
 
             {/* Header */}
             <LinearGradient
-                colors={['#0F2027', '#203A43', '#2C5364']}
+                colors={COLORS.headerGradient}
                 style={styles.header}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -490,7 +491,7 @@ const HomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0F1923',
+        backgroundColor: COLORS.background,
     },
     header: {
         paddingTop: 50,
@@ -499,6 +500,7 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 24,
         borderBottomRightRadius: 24,
         overflow: 'hidden',
+        ...SHADOWS.glow,
     },
     decorCircle1: {
         position: 'absolute',
@@ -527,12 +529,12 @@ const styles = StyleSheet.create({
     },
     greeting: {
         fontSize: 14,
-        color: 'rgba(255,255,255,0.6)',
+        color: COLORS.textSecondary,
     },
     userName: {
         fontSize: 24,
         fontWeight: '800',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
         marginTop: 4,
     },
     profileButton: {
@@ -558,11 +560,11 @@ const styles = StyleSheet.create({
     statCard: {
         flex: 1,
         backgroundColor: 'rgba(255,255,255,0.08)',
-        borderRadius: 14,
-        paddingVertical: 14,
+        borderRadius: SIZES.radiusMd,
+        paddingVertical: 16,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     statIcon: {
         fontSize: 20,
@@ -595,11 +597,11 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 18,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
     },
     seeAllText: {
         fontSize: 13,
-        color: '#00D2FF',
+        color: COLORS.primary,
         fontWeight: '600',
     },
     cardsGrid: {
@@ -613,11 +615,12 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     card: {
-        backgroundColor: '#1a2a3a',
-        borderRadius: 18,
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusLg,
         padding: 18,
         borderWidth: 1,
-        borderColor: '#2a3a4a',
+        borderColor: COLORS.border,
+        ...SHADOWS.small,
     },
     cardIconContainer: {
         width: 48,
@@ -633,21 +636,22 @@ const styles = StyleSheet.create({
     cardTitle: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
         marginBottom: 4,
     },
     cardSubtitle: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.5)',
+        color: COLORS.textSecondary,
         lineHeight: 16,
     },
     activityCard: {
-        backgroundColor: '#1a2a3a',
-        borderRadius: 14,
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusMd,
         padding: 16,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: '#2a3a4a',
+        borderColor: COLORS.border,
+        ...SHADOWS.small,
     },
     activityRow: {
         flexDirection: 'row',
@@ -665,11 +669,11 @@ const styles = StyleSheet.create({
     activityTitle: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
     },
     activityTime: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.4)',
+        color: COLORS.textSecondary,
         marginTop: 2,
     },
     activityArrow: {
@@ -677,12 +681,13 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.3)',
     },
     syncStatusCard: {
-        backgroundColor: '#1a2a3a',
-        borderRadius: 14,
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusMd,
         padding: 16,
         marginBottom: 20,
         borderWidth: 1,
-        borderColor: '#2a3a4a',
+        borderColor: COLORS.border,
+        ...SHADOWS.small,
     },
     syncStatusRow: {
         flexDirection: 'row',
@@ -704,16 +709,16 @@ const styles = StyleSheet.create({
     syncStatusTitle: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
     },
     syncStatusSubtitle: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.5)',
+        color: COLORS.textSecondary,
         marginTop: 2,
     },
     syncRecordCount: {
         fontSize: 11,
-        color: '#00D2FF',
+        color: COLORS.primary,
         marginTop: 4,
         fontWeight: '500',
     },
@@ -736,11 +741,11 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-around',
         alignItems: 'center',
-        paddingVertical: 10,
-        paddingBottom: 20,
+        paddingVertical: 12,
+        paddingBottom: 22,
         backgroundColor: '#152232',
         borderTopWidth: 1,
-        borderTopColor: '#2a3a4a',
+        borderTopColor: COLORS.border,
     },
     navItem: {
         alignItems: 'center',
@@ -774,11 +779,7 @@ const styles = StyleSheet.create({
         borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#00D2FF',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
-        elevation: 8,
+        ...SHADOWS.medium,
     },
     scanButtonIcon: {
         fontSize: 28,

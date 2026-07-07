@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES } from '../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../config/theme';
 import DisclaimerBanner from '../components/DisclaimerBanner';
 import { fetchRecommendations, fetchVideoLibrary } from '../services/api';
 
@@ -20,7 +20,7 @@ const DEFAULT_VIDEOS = [
 
 const RecommendationsScreen = ({ navigation, route }) => {
     const [recommendation, setRecommendation] = useState(null);
-    const [videos, setVideos] = useState(DEFAULT_VIDEOS);
+    const [videos, setVideos] = useState([]);
     const [selectedVideo, setSelectedVideo] = useState(null);
     const [loading, setLoading] = useState(true);
     const videoRef = useRef(null);
@@ -29,7 +29,61 @@ const RecommendationsScreen = ({ navigation, route }) => {
     const questionnaireId = route.params?.questionnaireId;
     const clinicalProfile = route.params?.clinicalProfile;
     const analysis = route.params?.analysis;
-    const grade = route.params?.grade ?? 0;
+    const grade = route.params?.grade ?? analysis?.klGrade ?? analysis?.kl_grade ?? 0;
+
+    const extractVideoUrl = (item) => {
+        if (!item) return null;
+        if (typeof item === 'string') return item;
+
+        if (Array.isArray(item.exercise_video_urls) && item.exercise_video_urls.length) {
+            return item.exercise_video_urls[0];
+        }
+        if (Array.isArray(item.exerciseVideoUrls) && item.exerciseVideoUrls.length) {
+            return item.exerciseVideoUrls[0];
+        }
+        if (Array.isArray(item.video_urls) && item.video_urls.length) {
+            return item.video_urls[0];
+        }
+
+        return (
+            item.video_url ||
+            item.videoUrl ||
+            item.url ||
+            item.s3_url ||
+            item.s3Url ||
+            item.presigned_url ||
+            item.signed_url ||
+            item.media_url ||
+            (item.source && (typeof item.source === 'string' ? item.source : item.source.uri)) ||
+            item.exercise_video_url ||
+            item.exerciseVideoUrl ||
+            null
+        );
+    };
+
+    const buildVideoObject = (item, index) => {
+        if (!item) return null;
+        if (typeof item === 'string') {
+            return {
+                id: `backend-video-${index}`,
+                title: `Exercise Video ${index + 1}`,
+                url: item,
+                time: 'Video',
+                difficulty: 'Personalized',
+                icon: '▶',
+            };
+        }
+
+        const url = extractVideoUrl(item);
+        return {
+            id: item.video_id || item.id || item.title ? item.title : `video-${index}`,
+            title: item.title || item.name || item.label || `Exercise Video ${index + 1}`,
+            url,
+            time: item.duration_seconds ? `${Math.round(item.duration_seconds / 60)} mins` : item.duration || item.time || '5 mins',
+            difficulty: item.difficulty || item.level || 'Easy',
+            icon: item.icon || '▶',
+        };
+    };
 
     useEffect(() => {
         let active = true;
@@ -57,29 +111,30 @@ const RecommendationsScreen = ({ navigation, route }) => {
                     setRecommendation({ recommendation: analysis.recommendation, lifestyle_plan: analysis.lifestylePlan || [] });
                 }
 
-                if (videosResult.status === 'fulfilled') {
+                const analysisVideoUrls = Array.isArray(analysis?.exerciseVideoUrls)
+                    ? analysis.exerciseVideoUrls
+                    : Array.isArray(analysis?.exercise_video_urls)
+                    ? analysis.exercise_video_urls
+                    : [];
+
+                const parsedAnalysisVideos = analysisVideoUrls
+                    .map(buildVideoObject)
+                    .filter((video) => video && video.url);
+
+                if (parsedAnalysisVideos.length > 0) {
+                    setVideos(parsedAnalysisVideos);
+                    setSelectedVideo(parsedAnalysisVideos[0]);
+                } else if (videosResult.status === 'fulfilled') {
                     const library = videosResult.value;
                     const normalizedVideos = Array.isArray(library) ? library : library?.items || library?.videos || [];
 
-                    if (normalizedVideos.length > 0) {
-                        setVideos(
-                            normalizedVideos.map((item, index) => ({
-                                id: item.video_id || item.id || index + 1,
-                                title: item.title || item.name || 'Exercise',
-                                url:
-                                    item.video_url ||
-                                    item.videoUrl ||
-                                    item.url ||
-                                    item.signed_url ||
-                                    item.presigned_url ||
-                                    item.media_url ||
-                                    item.source ||
-                                    null,
-                                time: item.duration_seconds ? `${Math.round(item.duration_seconds / 60)} mins` : '5 mins',
-                                difficulty: item.difficulty || 'Easy',
-                                icon: item.icon || '▶',
-                            }))
-                        );
+                    const mappedVideos = normalizedVideos
+                        .map(buildVideoObject)
+                        .filter((video) => video && video.url);
+
+                    if (mappedVideos.length > 0) {
+                        setVideos(mappedVideos);
+                        setSelectedVideo(mappedVideos[0]);
                     }
                 }
             } catch (error) {
@@ -164,7 +219,7 @@ const RecommendationsScreen = ({ navigation, route }) => {
                     {selectedVideo && (
                     <View style={styles.playerSection}>
                         <Text style={styles.sectionTitle}>Now Playing</Text>
-                        {selectedVideo.url ? (
+                        {selectedVideo?.url ? (
                             <Video
                                 ref={videoRef}
                                 style={styles.videoPlayer}
@@ -283,6 +338,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
+        ...SHADOWS.small,
     },
     videoThumbnail: {
         width: 100,

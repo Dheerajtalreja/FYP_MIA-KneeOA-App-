@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { setAuthToken, setRefreshToken, getProfile } from '../services/api';
 import { saveUser, getLatestQuestionnaire } from '../services/database';
 import { performPullSync } from '../services/pullSync';
+import { COLORS, SIZES } from '../config/theme';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HEADER_HEIGHT = 220; // Fixed height taaki flicker na ho
@@ -234,11 +235,11 @@ const LoginScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#0F2027" />
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.gradientStart} />
 
             {/* --- FIXED HEADER SECTION --- */}
             <LinearGradient
-                colors={['#0F2027', '#203A43', '#2C5364']}
+                colors={COLORS.headerGradient}
                 style={styles.topSection}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -376,7 +377,7 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0F1923',
+        backgroundColor: COLORS.background,
     },
     flex: {
         flex: 1,
@@ -436,7 +437,7 @@ const styles = StyleSheet.create({
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: '#1a2a3a',
+        backgroundColor: COLORS.surface,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -444,12 +445,12 @@ const styles = StyleSheet.create({
     welcomeText: {
         fontSize: 26,
         fontWeight: '800',
-        color: '#FFFFFF',
+        color: COLORS.textPrimary,
         letterSpacing: 0.5,
     },
     welcomeSubtext: {
         fontSize: 13,
-        color: 'rgba(255,255,255,0.6)',
+        color: COLORS.textSecondary,
         marginTop: 4,
     },
     formContainer: {
@@ -459,30 +460,30 @@ const styles = StyleSheet.create({
     inputLabel: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#8a9bb5',
+        color: COLORS.textLabel,
         marginBottom: 8,
         textTransform: 'uppercase',
     },
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1a2a3a',
-        borderRadius: 14,
+        backgroundColor: COLORS.surface,
+        borderRadius: SIZES.radiusMd,
         borderWidth: 1.5,
-        borderColor: '#2a3a4a',
+        borderColor: COLORS.border,
         paddingHorizontal: 16,
         height: 54,
     },
     inputWrapperFocused: {
-        borderColor: '#00D2FF',
-        backgroundColor: '#1e3040',
+        borderColor: COLORS.borderFocused,
+        backgroundColor: COLORS.surfaceLight,
     },
     inputIcon: { fontSize: 18, marginRight: 12 },
-    input: { flex: 1, fontSize: 16, color: '#FFFFFF' },
+    input: { flex: 1, fontSize: 16, color: COLORS.textPrimary },
     eyeButton: { padding: 4 },
     eyeIcon: { fontSize: 18 },
     forgotButton: { alignSelf: 'flex-end', marginBottom: 20 },
-    forgotText: { color: '#00D2FF', fontSize: 13, fontWeight: '600' },
+    forgotText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
     loginButton: {
         height: 54,
         borderRadius: 14,
@@ -496,23 +497,23 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginVertical: 24,
     },
-    dividerLine: { flex: 1, height: 1, backgroundColor: '#2a3a4a' },
-    dividerText: { color: '#5a6b7d', fontSize: 12, marginHorizontal: 12 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
+    dividerText: { color: COLORS.textSecondary, fontSize: 12, marginHorizontal: 12 },
     socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 24 },
     socialButton: {
         width: 50,
         height: 50,
         borderRadius: 12,
-        backgroundColor: '#1a2a3a',
+        backgroundColor: COLORS.surface,
         borderWidth: 1,
-        borderColor: '#2a3a4a',
+        borderColor: COLORS.border,
         justifyContent: 'center',
         alignItems: 'center',
     },
     socialIcon: { fontSize: 20, color: '#FFFFFF', fontWeight: '700' },
     signupRow: { flexDirection: 'row', justifyContent: 'center' },
-    signupText: { color: '#5a6b7d', fontSize: 14 },
-    signupLink: { color: '#00D2FF', fontSize: 14, fontWeight: '700' },
+    signupText: { color: COLORS.textSecondary, fontSize: 14 },
+    signupLink: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 });
 
 export default LoginScreen;
