@@ -9,7 +9,7 @@ import {
     Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES, getKLGradeColor, getKLGradeLabel } from '../config/theme';
+import { COLORS, SIZES, SHADOWS, getKLGradeColor, getKLGradeLabel } from '../config/theme';
 import DisclaimerBanner from '../components/DisclaimerBanner';
 
 const ResultScreen = ({ navigation, route }) => {
